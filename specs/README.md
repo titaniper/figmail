@@ -21,9 +21,12 @@ specs/
 
 ## Index
 
-| #   | Feature                                            | Status |
-| --- | -------------------------------------------------- | ------ |
-| 001 | [HTML email export](001-html-email-export/spec.md) | MVP    |
+| #   | Feature                                                    | Status          |
+| --- | ---------------------------------------------------------- | --------------- |
+| 001 | [HTML email export](001-html-email-export/spec.md)         | MVP             |
+| 002 | [Variables & bindings](002-variables-and-bindings/spec.md) | Proposed        |
+| 003 | [Theming (dark/light)](003-theming-dark-light/spec.md)     | Proposed        |
+| 004 | [Client preview](004-client-preview/spec.md)               | Partial (Gmail) |
 
 ## Conventions
 

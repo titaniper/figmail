@@ -4,16 +4,28 @@ import type { EmailDocument, ImageContent } from '../ir/types';
 import type { FrameImage, MainToUi, UiToMain } from '../shared/messages';
 import { renderMjml } from '../render/mjml';
 
-const preview = document.getElementById('preview') as HTMLIFrameElement;
-const source = document.getElementById('source') as HTMLTextAreaElement;
-const status = document.getElementById('status') as HTMLDivElement;
-const modeImage = document.getElementById('mode-image') as HTMLButtonElement;
-const modeText = document.getElementById('mode-text') as HTMLButtonElement;
-const tabPreview = document.getElementById('tab-preview') as HTMLButtonElement;
-const tabSource = document.getElementById('tab-source') as HTMLButtonElement;
-const copyBtn = document.getElementById('copy') as HTMLButtonElement;
-const downloadBtn = document.getElementById('download') as HTMLButtonElement;
-const resizeHandle = document.getElementById('resize') as HTMLDivElement;
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+const preview = $<HTMLIFrameElement>('preview');
+const source = $<HTMLTextAreaElement>('source');
+const status = $<HTMLDivElement>('status');
+const modeImage = $<HTMLButtonElement>('mode-image');
+const modeText = $<HTMLButtonElement>('mode-text');
+const themeLight = $<HTMLButtonElement>('theme-light');
+const themeDark = $<HTMLButtonElement>('theme-dark');
+const clientSelect = $<HTMLSelectElement>('client');
+const clientView = $<HTMLDivElement>('client-view');
+const tabPreview = $<HTMLButtonElement>('tab-preview');
+const tabSource = $<HTMLButtonElement>('tab-source');
+const copyBtn = $<HTMLButtonElement>('copy');
+const downloadBtn = $<HTMLButtonElement>('download');
+const resizeHandle = $<HTMLDivElement>('resize');
+const subjectInput = $<HTMLInputElement>('subject');
+const fromInput = $<HTMLInputElement>('from');
+const mailSubject = $<HTMLDivElement>('mail-subject');
+const mailFromName = document.querySelector('#mail-from .name') as HTMLSpanElement;
+const mailFromAddr = document.querySelector('#mail-from .addr') as HTMLSpanElement;
+const avatar = $<HTMLDivElement>('avatar');
 
 const EXPORT_DIR = 'figmail-export';
 const IMAGE_DIR = 'images';
@@ -97,6 +109,12 @@ function activeDoc(): EmailDocument | undefined {
   return mode === 'image' ? imageDoc : textDoc;
 }
 
+/** Match the preview iframe height to its content (re-measured after images load). */
+function sizePreview(): void {
+  const doc = preview.contentDocument;
+  if (doc) preview.style.height = `${doc.documentElement.scrollHeight}px`;
+}
+
 function renderCurrent(): void {
   const doc = activeDoc();
   if (!doc) return;
@@ -105,6 +123,12 @@ function renderCurrent(): void {
   source.value = currentHtml;
   clearError();
 }
+
+preview.onload = () => {
+  sizePreview();
+  // Images (data URLs) settle a tick after load — re-measure once more.
+  setTimeout(sizePreview, 300);
+};
 
 window.onmessage = (event: MessageEvent) => {
   const message = event.data.pluginMessage as MainToUi | undefined;
@@ -130,17 +154,42 @@ function setMode(next: Mode): void {
 modeImage.onclick = () => setMode('image');
 modeText.onclick = () => setMode('text');
 
+function setTheme(dark: boolean): void {
+  clientView.classList.toggle('dark', dark);
+  themeDark.classList.toggle('active', dark);
+  themeLight.classList.toggle('active', !dark);
+}
+themeLight.onclick = () => setTheme(false);
+themeDark.onclick = () => setTheme(true);
+
+clientSelect.onchange = () => {
+  clientView.dataset.client = clientSelect.value;
+};
+
+// Sender / subject fields drive the client-chrome header.
+subjectInput.oninput = () => {
+  mailSubject.textContent = subjectInput.value || 'No subject';
+};
+fromInput.oninput = () => {
+  const match = fromInput.value.match(/^\s*(.*?)\s*<(.+?)>\s*$/);
+  const name = match ? match[1] : fromInput.value;
+  const addr = match ? match[2] : '';
+  mailFromName.textContent = name || 'Sender';
+  mailFromAddr.textContent = addr ? `<${addr}>` : '';
+  avatar.textContent = (name || 'S').trim().charAt(0).toUpperCase();
+};
+
 tabPreview.onclick = () => {
   tabPreview.classList.add('active');
   tabSource.classList.remove('active');
-  preview.classList.remove('hidden');
+  clientView.classList.remove('hidden');
   source.classList.add('hidden');
 };
 tabSource.onclick = () => {
   tabSource.classList.add('active');
   tabPreview.classList.remove('active');
   source.classList.remove('hidden');
-  preview.classList.add('hidden');
+  clientView.classList.add('hidden');
 };
 
 copyBtn.onclick = async () => {
