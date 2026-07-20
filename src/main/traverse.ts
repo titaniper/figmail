@@ -17,9 +17,13 @@ export function readTemplateData(node: BaseNode): TemplateData {
   try {
     const raw = node.getPluginData(PLUGIN_TEMPLATE_KEY);
     const parsed = raw ? (JSON.parse(raw) as Partial<TemplateData>) : {};
-    return { values: parsed.values ?? {}, subject: parsed.subject, from: parsed.from };
+    return {
+      variables: Array.isArray(parsed.variables) ? parsed.variables : [],
+      subject: parsed.subject,
+      from: parsed.from,
+    };
   } catch {
-    return { values: {} };
+    return { variables: [] };
   }
 }
 

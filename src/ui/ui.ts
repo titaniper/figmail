@@ -1,7 +1,16 @@
 import JSZip from 'jszip';
 import mjml2html from 'mjml-browser';
-import type { Binding, EmailDocument, ImageContent } from '../ir/types';
-import type { FrameImage, MainToUi, NodeData, SelectedNodeInfo, TemplateData, UiToMain } from '../shared/messages';
+import type { EmailDocument, ImageContent } from '../ir/types';
+import type {
+  FrameImage,
+  MainToUi,
+  NodeData,
+  SelectedNodeInfo,
+  TemplateData,
+  TemplateRef,
+  TemplateVariable,
+  UiToMain,
+} from '../shared/messages';
 import { renderMjml, type RenderOptions } from '../render/mjml';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -27,11 +36,18 @@ const mailSubject = $<HTMLDivElement>('mail-subject');
 const mailFromName = document.querySelector('#mail-from .name') as HTMLSpanElement;
 const mailFromAddr = document.querySelector('#mail-from .addr') as HTMLSpanElement;
 const avatar = $<HTMLDivElement>('avatar');
-const captureBtn = $<HTMLButtonElement>('capture');
 const varMockup = $<HTMLButtonElement>('var-mockup');
 const varVars = $<HTMLButtonElement>('var-vars');
 const selectionBody = $<HTMLDivElement>('selection-body');
 const variablesList = $<HTMLDivElement>('variables-list');
+const templateSelect = $<HTMLSelectElement>('template-select');
+const templateName = $<HTMLInputElement>('template-name');
+const templateRename = $<HTMLButtonElement>('template-rename');
+const templateDelete = $<HTMLButtonElement>('template-delete');
+const templateAdd = $<HTMLButtonElement>('template-add');
+const newvarName = $<HTMLInputElement>('newvar-name');
+const newvarType = $<HTMLSelectElement>('newvar-type');
+const newvarAdd = $<HTMLButtonElement>('newvar-add');
 
 const EXPORT_DIR = 'figmail-export';
 const IMAGE_DIR = 'images';
@@ -42,7 +58,9 @@ let variablesMode = false;
 let textDoc: EmailDocument | undefined;
 let imageDoc: EmailDocument | undefined;
 let selectedNode: SelectedNodeInfo | null = null;
-let template: TemplateData = { values: {} };
+let template: TemplateData = { variables: [] };
+let templates: TemplateRef[] = [];
+let currentTemplateId: string | null = null;
 let currentHtml = '';
 
 function post(message: UiToMain) {
@@ -104,12 +122,67 @@ function collectImages(doc: EmailDocument): ImageContent[] {
   return images;
 }
 
-function opts(): RenderOptions {
-  return { variables: mode === 'text' && variablesMode, values: template.values };
+// --- variables model -------------------------------------------------------
+
+interface DisplayVar {
+  name: string;
+  type: TemplateVariable['type'];
+  value?: string;
+  sample?: string;
+  bound: boolean;
+}
+
+/** Variable names/types/samples inferred from node bindings in the document. */
+function boundVariables(doc: EmailDocument | undefined): DisplayVar[] {
+  if (!doc) return [];
+  const byName = new Map<string, DisplayVar>();
+  for (const section of doc.sections)
+    for (const column of section.columns)
+      for (const content of column.contents) {
+        const binding = 'binding' in content ? content.binding : undefined;
+        if (binding && !byName.has(binding.name)) {
+          byName.set(binding.name, { name: binding.name, type: binding.type, sample: binding.sample, bound: true });
+        }
+      }
+  return [...byName.values()];
+}
+
+/** The full variable set shown to the user: bound + explicitly declared. */
+function displayVariables(): DisplayVar[] {
+  const byName = new Map<string, DisplayVar>();
+  for (const v of boundVariables(textDoc)) byName.set(v.name, v);
+  for (const v of template.variables) {
+    const existing = byName.get(v.name);
+    if (existing) existing.value = v.value;
+    else byName.set(v.name, { name: v.name, type: v.type, value: v.value, bound: false });
+  }
+  return [...byName.values()];
+}
+
+function valuesMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const v of template.variables) if (v.value) map[v.name] = v.value;
+  return map;
+}
+
+function upsertVariable(name: string, patch: Partial<TemplateVariable>): void {
+  const existing = template.variables.find((v) => v.name === name);
+  if (existing) Object.assign(existing, patch);
+  else template.variables.push({ name, type: patch.type ?? 'text', value: patch.value });
+  saveTemplate();
+}
+
+function removeVariable(name: string): void {
+  template.variables = template.variables.filter((v) => v.name !== name);
+  saveTemplate();
 }
 
 function saveTemplate(): void {
   post({ type: 'saveTemplate', data: template });
+}
+
+function opts(): RenderOptions {
+  return { variables: mode === 'text' && variablesMode, values: valuesMap() };
 }
 
 function renderWith(doc: EmailDocument, resolveSrc: (image: ImageContent) => string): string {
@@ -144,23 +217,18 @@ preview.onload = () => {
 
 // --- variables panel -------------------------------------------------------
 
-function gatherVariables(doc: EmailDocument | undefined): Binding[] {
-  if (!doc) return [];
-  const byName = new Map<string, Binding>();
-  for (const section of doc.sections)
-    for (const column of section.columns)
-      for (const content of column.contents) {
-        const binding = 'binding' in content ? content.binding : undefined;
-        if (binding && !byName.has(binding.name)) byName.set(binding.name, binding);
-      }
-  return [...byName.values()];
+function variableNamesDatalist(): string {
+  const names = displayVariables()
+    .map((v) => `<option value="${esc(v.name)}"></option>`)
+    .join('');
+  return `<datalist id="var-names">${names}</datalist>`;
 }
 
 function renderVariablesList(): void {
-  const vars = gatherVariables(textDoc);
+  const vars = displayVariables();
   if (vars.length === 0) {
     variablesList.className = 'muted';
-    variablesList.textContent = 'None yet. Select a layer and bind one.';
+    variablesList.textContent = 'None yet. Add one above, or bind a layer.';
     return;
   }
   variablesList.className = '';
@@ -168,11 +236,12 @@ function renderVariablesList(): void {
     .map(
       (v) =>
         `<div class="var-item">
+          <button class="var-del" data-name="${esc(v.name)}">remove</button>
           <div><code>{{ ${esc(v.name)} }}</code> <span class="meta">${v.type}${
-            v.sample ? ` · ${esc(v.sample.slice(0, 40))}` : ''
-          }</span></div>
+            v.bound ? '' : ' · unbound'
+          }${v.sample ? ` · ${esc(v.sample.slice(0, 32))}` : ''}</span></div>
           <input class="var-value" data-name="${esc(v.name)}" placeholder="value (applied)" value="${esc(
-            template.values[v.name] ?? '',
+            v.value ?? '',
           )}">
         </div>`,
     )
@@ -180,11 +249,15 @@ function renderVariablesList(): void {
 
   variablesList.querySelectorAll<HTMLInputElement>('.var-value').forEach((input) => {
     input.oninput = () => {
-      const name = input.dataset.name as string;
-      if (input.value) template.values[name] = input.value;
-      else delete template.values[name];
-      saveTemplate();
+      upsertVariable(input.dataset.name as string, { value: input.value || undefined });
       if (!variablesMode) renderCurrent(); // applied values show in Mockup
+    };
+  });
+  variablesList.querySelectorAll<HTMLButtonElement>('.var-del').forEach((btn) => {
+    btn.onclick = () => {
+      removeVariable(btn.dataset.name as string);
+      renderVariablesList();
+      renderCurrent();
     };
   });
 }
@@ -203,23 +276,27 @@ function renderSelectionPanel(): void {
   }
   selectionBody.className = '';
   const b = node.data.binding;
+  const list = variableNamesDatalist();
 
   if (node.kind === 'text') {
     selectionBody.innerHTML = `
+      ${list}
       <div class="kind-chip">TEXT</div>
       <div class="field"><label>Sample (mockup)</label><input id="b-sample" value="${esc(node.text ?? '')}" readonly></div>
-      <div class="field"><label>Variable name</label><input id="b-name" placeholder="e.g. customerName" value="${esc(b?.name ?? '')}"></div>
+      <div class="field"><label>Variable name</label><input id="b-name" list="var-names" placeholder="e.g. customerName" value="${esc(b?.name ?? '')}"></div>
       <div class="row-btns"><button class="bind" id="b-bind">Bind</button><button class="unbind" id="b-unbind">Unbind</button></div>`;
   } else if (node.kind === 'button') {
     selectionBody.innerHTML = `
+      ${list}
       <div class="kind-chip">BUTTON / LINK</div>
       <div class="field"><label>Link (href)</label><input id="b-href" placeholder="https://..." value="${esc(node.data.href ?? b?.sample ?? '')}"></div>
-      <div class="field"><label>URL variable (optional)</label><input id="b-name" placeholder="e.g. portalUrl" value="${esc(b?.name ?? '')}"></div>
+      <div class="field"><label>URL variable (optional)</label><input id="b-name" list="var-names" placeholder="e.g. portalUrl" value="${esc(b?.name ?? '')}"></div>
       <div class="row-btns"><button class="bind" id="b-bind">Save</button><button class="unbind" id="b-unbind">Clear</button></div>`;
   } else {
     selectionBody.innerHTML = `
+      ${list}
       <div class="kind-chip">IMAGE</div>
-      <div class="field"><label>Image URL variable</label><input id="b-name" placeholder="e.g. heroImageUrl" value="${esc(b?.name ?? '')}"></div>
+      <div class="field"><label>Image URL variable</label><input id="b-name" list="var-names" placeholder="e.g. heroImageUrl" value="${esc(b?.name ?? '')}"></div>
       <div class="row-btns"><button class="bind" id="b-bind">Bind</button><button class="unbind" id="b-unbind">Unbind</button></div>`;
   }
 
@@ -233,8 +310,7 @@ function renderSelectionPanel(): void {
       if (!name) return post({ type: 'notify', message: 'Enter a variable name.' });
       sendBind({ binding: { name, type: 'text', sample: node.text } });
     } else if (node.kind === 'button') {
-      const binding: Binding | undefined = name ? { name, type: 'url', sample: href } : undefined;
-      sendBind({ href, binding });
+      sendBind({ href, binding: name ? { name, type: 'url', sample: href } : undefined });
     } else {
       if (!name) return post({ type: 'notify', message: 'Enter a variable name.' });
       sendBind({ binding: { name, type: 'image' } });
@@ -243,7 +319,33 @@ function renderSelectionPanel(): void {
   (document.getElementById('b-unbind') as HTMLButtonElement).onclick = () => sendBind({});
 }
 
+// --- template bar ----------------------------------------------------------
+
+function renderTemplateBar(): void {
+  templateSelect.innerHTML = templates
+    .map((t) => `<option value="${esc(t.id)}"${t.id === currentTemplateId ? ' selected' : ''}>${esc(t.name)}</option>`)
+    .join('');
+  const current = templates.find((t) => t.id === currentTemplateId);
+  templateName.value = current?.name ?? '';
+  const empty = templates.length === 0;
+  templateSelect.disabled = empty;
+  templateRename.disabled = !current;
+  templateDelete.disabled = !current;
+}
+
 // --- messages --------------------------------------------------------------
+
+function applySubjectToChrome(): void {
+  mailSubject.textContent = subjectInput.value || 'No subject';
+}
+function applyFromToChrome(): void {
+  const match = fromInput.value.match(/^\s*(.*?)\s*<(.+?)>\s*$/);
+  const name = match ? match[1] : fromInput.value;
+  const addr = match ? match[2] : '';
+  mailFromName.textContent = name || 'Sender';
+  mailFromAddr.textContent = addr ? `<${addr}>` : '';
+  avatar.textContent = (name || 'S').trim().charAt(0).toUpperCase();
+}
 
 window.onmessage = (event: MessageEvent) => {
   const message = event.data.pluginMessage as MainToUi | undefined;
@@ -259,6 +361,11 @@ window.onmessage = (event: MessageEvent) => {
       applyFromToChrome();
       renderCurrent();
       renderVariablesList();
+      break;
+    case 'templates':
+      templates = message.list;
+      currentTemplateId = message.currentId;
+      renderTemplateBar();
       break;
     case 'selection':
       selectedNode = message.node;
@@ -285,8 +392,7 @@ function setVarMode(vars: boolean): void {
   variablesMode = vars;
   varVars.classList.toggle('active', vars);
   varMockup.classList.toggle('active', !vars);
-  if (mode !== 'text')
-    setMode('text'); // variables only apply to Text mode
+  if (mode !== 'text') setMode('text');
   else renderCurrent();
 }
 varMockup.onclick = () => setVarMode(false);
@@ -304,17 +410,6 @@ clientSelect.onchange = () => {
   clientView.dataset.client = clientSelect.value;
 };
 
-function applySubjectToChrome(): void {
-  mailSubject.textContent = subjectInput.value || 'No subject';
-}
-function applyFromToChrome(): void {
-  const match = fromInput.value.match(/^\s*(.*?)\s*<(.+?)>\s*$/);
-  const name = match ? match[1] : fromInput.value;
-  const addr = match ? match[2] : '';
-  mailFromName.textContent = name || 'Sender';
-  mailFromAddr.textContent = addr ? `<${addr}>` : '';
-  avatar.textContent = (name || 'S').trim().charAt(0).toUpperCase();
-}
 subjectInput.oninput = () => {
   applySubjectToChrome();
   template.subject = subjectInput.value;
@@ -326,7 +421,24 @@ fromInput.oninput = () => {
   saveTemplate();
 };
 
-captureBtn.onclick = () => post({ type: 'capture' });
+// Template bar
+templateAdd.onclick = () => post({ type: 'capture' });
+templateSelect.onchange = () => post({ type: 'selectTemplate', id: templateSelect.value });
+templateRename.onclick = () => {
+  if (currentTemplateId) post({ type: 'renameTemplate', id: currentTemplateId, name: templateName.value.trim() });
+};
+templateDelete.onclick = () => {
+  if (currentTemplateId) post({ type: 'deleteTemplate', id: currentTemplateId });
+};
+
+// New variable
+newvarAdd.onclick = () => {
+  const name = newvarName.value.trim();
+  if (!name) return post({ type: 'notify', message: 'Enter a variable name.' });
+  upsertVariable(name, { type: newvarType.value as TemplateVariable['type'] });
+  newvarName.value = '';
+  renderVariablesList();
+};
 
 tabPreview.onclick = () => {
   tabPreview.classList.add('active');
@@ -359,19 +471,11 @@ downloadBtn.onclick = async () => {
   root.file('email.html', html);
   const imageFolder = root.folder(IMAGE_DIR)!;
   for (const image of collectImages(doc)) {
-    // Bound images are emitted as {{ variable }} in variables mode — no file needed.
     if (image.bytes && !(useVars && image.binding)) imageFolder.file(`${image.id}.png`, image.bytes);
   }
 
-  const vars = gatherVariables(textDoc).map((v) => ({
-    name: v.name,
-    type: v.type,
-    sample: v.sample,
-    value: template.values[v.name] ?? '',
-  }));
-  if (vars.length > 0) {
-    root.file('variables.json', JSON.stringify(vars, null, 2));
-  }
+  const vars = displayVariables().map((v) => ({ name: v.name, type: v.type, sample: v.sample, value: v.value ?? '' }));
+  if (vars.length > 0) root.file('variables.json', JSON.stringify(vars, null, 2));
 
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);

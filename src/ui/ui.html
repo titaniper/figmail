@@ -38,10 +38,26 @@
   select { font-size: 12px; padding: 5px 8px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; }
   .tabs { margin-left: auto; }
 
+  #templates-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid #eee; background: #f4f6fb;
+  }
+  #templates-bar .label { font-weight: 700; font-size: 11px; color: #6b7280; }
+  #template-name { flex: 1; border: 1px solid #e0e0e0; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+  #templates-bar button { padding: 5px 10px; border: 1px solid #d7d9e0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
+  #template-add { background: #3d4cff; color: #fff; border-color: #3d4cff; font-weight: 600; }
+
   #settings { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #eee; background: #fafafa; }
   #settings input { border: 1px solid #e0e0e0; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
   #subject { flex: 2; }
   #from { flex: 1; }
+
+  /* New-variable row */
+  .newvar { display: flex; gap: 6px; margin-bottom: 10px; }
+  .newvar input { flex: 1; min-width: 0; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .newvar select { padding: 6px; }
+  .newvar button { padding: 6px 10px; border: none; border-radius: 6px; background: #3d4cff; color: #fff; font-weight: 600; cursor: pointer; }
+  .var-del { border: none; background: transparent; color: #b00020; cursor: pointer; font-size: 11px; float: right; }
 
   main { flex: 1; overflow: hidden; position: relative; }
   #workarea { display: flex; height: 100%; }
@@ -139,6 +155,15 @@
   </div>
 </header>
 
+<div id="templates-bar">
+  <span class="label">Email</span>
+  <select id="template-select" title="Switch template"></select>
+  <input id="template-name" type="text" placeholder="Template name" />
+  <button id="template-rename" title="Rename this template">Rename</button>
+  <button id="template-delete" title="Remove from list">✕</button>
+  <button id="template-add" title="Capture the selected Figma frame as a new template">＋ Capture</button>
+</div>
+
 <div id="settings">
   <input id="subject" type="text" placeholder="Subject" value="Your Haulla invoice" />
   <input id="from" type="text" placeholder="From (name &lt;email&gt;)" value="Haulla <no-reply@haulla.com>" />
@@ -164,8 +189,7 @@
     </div>
 
     <aside id="panel">
-      <button id="capture" class="panel-btn">⟳ Capture selected frame</button>
-      <div class="panel-note">Select a frame, then bind variables to text / links / images (Text mode).</div>
+      <div class="panel-note">Use ＋ Capture (top) to save a frame, then bind variables to text / links / images (Text mode).</div>
 
       <div class="panel-section">
         <div class="panel-title">Preview values</div>
@@ -182,6 +206,15 @@
 
       <div class="panel-section">
         <div class="panel-title">Variables</div>
+        <div class="newvar">
+          <input id="newvar-name" type="text" placeholder="New variable name" />
+          <select id="newvar-type">
+            <option value="text">text</option>
+            <option value="url">url</option>
+            <option value="image">image</option>
+          </select>
+          <button id="newvar-add">Add</button>
+        </div>
         <div id="variables-list" class="muted">None yet.</div>
       </div>
     </aside>

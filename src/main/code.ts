@@ -1,7 +1,9 @@
-import type { MainToUi, SelectedNodeInfo, UiToMain } from '../shared/messages';
+import type { MainToUi, SelectedNodeInfo, TemplateRef, UiToMain } from '../shared/messages';
 import { buildDocument, PLUGIN_DATA_KEY, PLUGIN_TEMPLATE_KEY, readNodeData, readTemplateData } from './traverse';
 
 figma.showUI(__html__, { width: 720, height: 900, title: 'Figmail' });
+
+const REGISTRY_KEY = 'figmail:templates';
 
 // The captured template root is fixed on capture; selecting a child afterwards
 // targets it for variable binding without changing the template.
@@ -9,6 +11,23 @@ let rootId: string | undefined;
 
 function post(message: MainToUi) {
   figma.ui.postMessage(message);
+}
+
+function readRegistry(): TemplateRef[] {
+  try {
+    const raw = figma.currentPage.getPluginData(REGISTRY_KEY);
+    return raw ? (JSON.parse(raw) as TemplateRef[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRegistry(list: TemplateRef[]) {
+  figma.currentPage.setPluginData(REGISTRY_KEY, JSON.stringify(list));
+}
+
+function postTemplates() {
+  post({ type: 'templates', list: readRegistry(), currentId: rootId ?? null });
 }
 
 function nodeKind(node: SceneNode): SelectedNodeInfo['kind'] {
@@ -20,18 +39,28 @@ function nodeKind(node: SceneNode): SelectedNodeInfo['kind'] {
   return isVector || hasImageFill ? 'image' : 'other';
 }
 
+/** Capture a node as the active template, registering it if new. */
 async function capture(node: SceneNode) {
   rootId = node.id;
+
+  const registry = readRegistry();
+  if (!registry.some((t) => t.id === node.id)) {
+    registry.push({ id: node.id, name: node.name || 'Untitled' });
+    writeRegistry(registry);
+  }
+
   const doc = await buildDocument(node);
   const bytes = await (
     node as SceneNode & { exportAsync: (s: ExportSettingsImage) => Promise<Uint8Array> }
   ).exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
+
   post({
     type: 'document',
     doc,
     frame: { bytes, width: Math.round(node.width), height: Math.round(node.height) },
     template: readTemplateData(node),
   });
+  postTemplates();
 }
 
 function reflectSelection() {
@@ -59,21 +88,49 @@ async function recaptureRoot() {
   if (root && 'exportAsync' in root) await capture(root as SceneNode);
 }
 
+async function captureById(id: string) {
+  const node = figma.getNodeById(id);
+  if (node && 'exportAsync' in node) {
+    await capture(node as SceneNode);
+  } else {
+    // Node was deleted — drop it from the registry.
+    writeRegistry(readRegistry().filter((t) => t.id !== id));
+    post({ type: 'error', message: 'That frame no longer exists.' });
+    postTemplates();
+  }
+}
+
 figma.ui.onmessage = async (message: UiToMain) => {
   switch (message.type) {
     case 'ready': {
+      const registry = readRegistry();
+      const existing = registry.find((t) => figma.getNodeById(t.id));
       const selection = figma.currentPage.selection;
-      if (selection.length > 0) await capture(selection[0]);
+      if (existing) await captureById(existing.id);
+      else if (selection.length > 0) await capture(selection[0]);
+      else postTemplates();
       reflectSelection();
       break;
     }
     case 'capture': {
       const selection = figma.currentPage.selection;
-      if (selection.length === 0) {
-        post({ type: 'error', message: 'Select a frame to capture.' });
-      } else {
-        await capture(selection[0]);
-      }
+      if (selection.length === 0) post({ type: 'error', message: 'Select a frame to capture.' });
+      else await capture(selection[0]);
+      break;
+    }
+    case 'selectTemplate':
+      await captureById(message.id);
+      break;
+    case 'renameTemplate': {
+      const registry = readRegistry().map((t) => (t.id === message.id ? { ...t, name: message.name || t.name } : t));
+      writeRegistry(registry);
+      postTemplates();
+      break;
+    }
+    case 'deleteTemplate': {
+      writeRegistry(readRegistry().filter((t) => t.id !== message.id));
+      if (rootId === message.id) rootId = undefined;
+      postTemplates();
       break;
     }
     case 'bind': {
