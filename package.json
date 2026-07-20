@@ -1,0 +1,20 @@
+{
+  "name": "figmail",
+  "version": "0.1.0",
+  "description": "Figma plugin that exports designs to email-ready HTML (Emailify-style)",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "mjml-browser": "^4.15.3"
+  }
+}
