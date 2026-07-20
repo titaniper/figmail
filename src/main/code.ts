@@ -54,26 +54,35 @@ function nodeKind(node: SceneNode): SelectedNodeInfo['kind'] {
 
 /** Capture a node as the active template, registering it if new. */
 async function capture(node: SceneNode) {
-  rootId = node.id;
-
-  const registry = readRegistry();
-  if (!registry.some((t) => t.id === node.id)) {
-    registry.push({ id: node.id, name: node.name || 'Untitled' });
-    writeRegistry(registry);
+  if (!('exportAsync' in node)) {
+    post({ type: 'error', message: `"${node.name}" can't be exported — select a frame or component.` });
+    return;
   }
 
-  const doc = await buildDocument(node);
-  const bytes = await (
-    node as SceneNode & { exportAsync: (s: ExportSettingsImage) => Promise<Uint8Array> }
-  ).exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
+  try {
+    const doc = await buildDocument(node);
+    const bytes = await (
+      node as SceneNode & { exportAsync: (s: ExportSettingsImage) => Promise<Uint8Array> }
+    ).exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
 
-  post({
-    type: 'document',
-    doc,
-    frame: { bytes, width: Math.round(node.width), height: Math.round(node.height) },
-    template: readTemplateData(node),
-  });
-  postTemplates();
+    rootId = node.id;
+    const registry = readRegistry();
+    if (!registry.some((t) => t.id === node.id)) {
+      registry.push({ id: node.id, name: node.name || 'Untitled' });
+      writeRegistry(registry);
+    }
+
+    post({
+      type: 'document',
+      doc,
+      frame: { bytes, width: Math.round(node.width), height: Math.round(node.height) },
+      template: readTemplateData(node),
+    });
+    postTemplates();
+  } catch (error) {
+    console.error('Figmail capture failed', error);
+    post({ type: 'error', message: `Capture failed: ${error instanceof Error ? error.message : String(error)}` });
+  }
 }
 
 function reflectSelection() {
