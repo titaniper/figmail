@@ -90,7 +90,36 @@ function looksLikeButton(node: SceneNode): boolean {
   return /button|btn|cta/i.test(node.name);
 }
 
+const VECTOR_TYPES: SceneNode['type'][] = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'POLYGON'];
+
+function subtreeHasText(node: SceneNode): boolean {
+  if (node.type === 'TEXT') return true;
+  if ('children' in node) return node.children.some(subtreeHasText);
+  return false;
+}
+
+function subtreeHasVector(node: SceneNode): boolean {
+  if (VECTOR_TYPES.includes(node.type)) return true;
+  if ('children' in node) return node.children.some(subtreeHasVector);
+  return false;
+}
+
+/**
+ * A node that should be flattened into a single raster image to reproduce it
+ * faithfully: a vector shape, or an icon/illustration group made of vectors
+ * with no live text. Text-bearing containers are left to recurse so their copy
+ * stays selectable.
+ */
+function isFlattenableGraphic(node: SceneNode): boolean {
+  if (VECTOR_TYPES.includes(node.type)) return true;
+  if (isContainer(node) && subtreeHasVector(node) && !subtreeHasText(node)) return true;
+  return false;
+}
+
+let imageCounter = 0;
+
 async function toImage(node: SceneNode): Promise<Content> {
+  imageCounter += 1;
   const bytes = await (
     node as SceneNode & {
       exportAsync: (s: ExportSettingsImage) => Promise<Uint8Array>;
@@ -98,6 +127,7 @@ async function toImage(node: SceneNode): Promise<Content> {
   ).exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
   return {
     type: 'image',
+    id: `image-${imageCounter}`,
     bytes,
     width: Math.round(node.width),
     height: Math.round(node.height),
@@ -107,7 +137,7 @@ async function toImage(node: SceneNode): Promise<Content> {
 
 /** Collects leaf-level content (text / images / buttons) from a node subtree, in order. */
 async function collectContents(node: SceneNode): Promise<Content[]> {
-  if (node.visible === false) return [];
+  if (node.visible === false || ('opacity' in node && node.opacity === 0)) return [];
 
   if (node.type === 'TEXT') {
     const text = node.characters.trim();
@@ -125,7 +155,7 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
     ];
   }
 
-  if (hasImageFill(node) || node.type === 'VECTOR' || node.type === 'BOOLEAN_OPERATION') {
+  if (hasImageFill(node) || isFlattenableGraphic(node)) {
     return [await toImage(node)];
   }
 
@@ -166,6 +196,7 @@ function isHorizontal(node: SceneNode): boolean {
  * column holds the flattened leaf content of that child.
  */
 export async function buildDocument(root: SceneNode): Promise<EmailDocument> {
+  imageCounter = 0;
   const sections: Section[] = [];
 
   const children = 'children' in root ? root.children : [];

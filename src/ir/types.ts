@@ -31,9 +31,11 @@ export interface TextContent {
 
 export interface ImageContent {
   type: 'image';
-  /** Resolved by the UI from `bytes` into a data URL before rendering. */
+  /** Stable identifier, also used as the exported file name (`<id>.png`). */
+  id: string;
+  /** Resolved by the UI: a data URL for preview, or a relative path for folder export. */
   src?: string;
-  /** PNG bytes exported from Figma; UI turns these into a data URL. */
+  /** PNG bytes exported from Figma. */
   bytes?: Uint8Array;
   width: number;
   height: number;

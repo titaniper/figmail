@@ -43,14 +43,27 @@ Each direct child of the selected root frame becomes one email **section**:
 Leaf mapping: `TEXT` → `mj-text`, image-fill / vector nodes → exported PNG →
 `mj-image`, nodes named `button`/`btn`/`cta` → `mj-button`.
 
+## Output
+
+- **Preview / Copy HTML** — images inlined as base64 data URLs, so the HTML is a
+  single self-contained file.
+- **Export** — a `figmail-export.zip` containing `email.html` +
+  `images/<id>.png`, with the HTML referencing images by relative path, so the
+  design reproduces exactly when the folder is opened or served.
+
 ## Known limitations (early)
 
 - Arbitrary nesting is flattened — deep/complex layouts need a smarter section
   splitter.
-- Images are embedded as base64 data URLs (fine for preview; many email clients
-  strip these — production emails need hosted image URLs).
+- Data-URL images are fine for preview/local use; many email clients strip
+  them, so production sends need hosted image URLs (see roadmap).
 - No support yet for gradients, strokes/borders, shadows, or responsive
   breakpoints.
+
+## Specs
+
+Behavior is defined under [`specs/`](specs/README.md) first (Spec-Driven
+Development). Start with [001 · HTML email export](specs/001-html-email-export/spec.md).
 
 ## Development
 

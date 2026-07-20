@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import mjml2html from 'mjml-browser';
 import type { EmailDocument, ImageContent } from '../ir/types';
 import type { MainToUi, UiToMain } from '../shared/messages';
@@ -11,6 +12,10 @@ const tabSource = document.getElementById('tab-source') as HTMLButtonElement;
 const copyBtn = document.getElementById('copy') as HTMLButtonElement;
 const downloadBtn = document.getElementById('download') as HTMLButtonElement;
 
+const EXPORT_DIR = 'figmail-export';
+const IMAGE_DIR = 'images';
+
+let currentDoc: EmailDocument | undefined;
 let currentHtml = '';
 
 function post(message: UiToMain) {
@@ -32,30 +37,34 @@ function bytesToDataUrl(bytes: Uint8Array): string {
   return `data:image/png;base64,${btoa(binary)}`;
 }
 
-/** Resolve exported image bytes into data URLs so the preview renders offline. */
-function resolveImages(doc: EmailDocument): void {
+/** Every image in the document, in document order. */
+function collectImages(doc: EmailDocument): ImageContent[] {
+  const images: ImageContent[] = [];
   for (const section of doc.sections) {
     for (const column of section.columns) {
       for (const content of column.contents) {
-        if (content.type === 'image') {
-          const image = content as ImageContent;
-          if (image.bytes && !image.src) image.src = bytesToDataUrl(image.bytes);
-        }
+        if (content.type === 'image') images.push(content);
       }
     }
   }
+  return images;
+}
+
+/** Render with each image `src` set by `resolveSrc(image)`. */
+function renderWith(doc: EmailDocument, resolveSrc: (image: ImageContent) => string): string {
+  for (const image of collectImages(doc)) image.src = resolveSrc(image);
+  const mjml = renderMjml(doc);
+  const { html, errors } = mjml2html(mjml, { validationLevel: 'soft' });
+  if (errors.length) console.warn('MJML warnings', errors);
+  return html;
 }
 
 function renderDocument(doc: EmailDocument): void {
-  resolveImages(doc);
-  const mjml = renderMjml(doc);
-  const { html, errors } = mjml2html(mjml, { validationLevel: 'soft' });
-  if (errors.length) {
-    console.warn('MJML warnings', errors);
-  }
-  currentHtml = html;
-  preview.srcdoc = html;
-  source.value = html;
+  currentDoc = doc;
+  // Preview embeds images inline so it renders with no external files.
+  currentHtml = renderWith(doc, (image) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? '')));
+  preview.srcdoc = currentHtml;
+  source.value = currentHtml;
   clearError();
 }
 
@@ -89,18 +98,32 @@ tabSource.onclick = () => {
 copyBtn.onclick = async () => {
   if (!currentHtml) return;
   await navigator.clipboard.writeText(currentHtml);
-  post({ type: 'notify', message: 'HTML copied to clipboard' });
+  post({ type: 'notify', message: 'HTML copied (images inlined)' });
 };
 
-downloadBtn.onclick = () => {
-  if (!currentHtml) return;
-  const blob = new Blob([currentHtml], { type: 'text/html' });
+// Export a zip folder: email.html referencing images/<id>.png + those PNG files,
+// so the design reproduces exactly when the folder is served or opened.
+downloadBtn.onclick = async () => {
+  if (!currentDoc) return;
+
+  const html = renderWith(currentDoc, (image) => `${IMAGE_DIR}/${image.id}.png`);
+
+  const zip = new JSZip();
+  const root = zip.folder(EXPORT_DIR)!;
+  root.file('email.html', html);
+  const imageFolder = root.folder(IMAGE_DIR)!;
+  for (const image of collectImages(currentDoc)) {
+    if (image.bytes) imageFolder.file(`${image.id}.png`, image.bytes);
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'email.html';
+  link.download = `${EXPORT_DIR}.zip`;
   link.click();
   URL.revokeObjectURL(url);
+  post({ type: 'notify', message: 'Exported figmail-export.zip' });
 };
 
 post({ type: 'ready' });
