@@ -1,7 +1,8 @@
 import type { BoxStyle, Column, Content, EmailDocument, Section, TextRun, TextStyle } from '../ir/types';
-import type { NodeData } from '../shared/messages';
+import type { NodeData, TemplateData } from '../shared/messages';
 
 export const PLUGIN_DATA_KEY = 'figmail';
+export const PLUGIN_TEMPLATE_KEY = 'figmail:template';
 
 export function readNodeData(node: BaseNode): NodeData {
   try {
@@ -9,6 +10,16 @@ export function readNodeData(node: BaseNode): NodeData {
     return raw ? (JSON.parse(raw) as NodeData) : {};
   } catch {
     return {};
+  }
+}
+
+export function readTemplateData(node: BaseNode): TemplateData {
+  try {
+    const raw = node.getPluginData(PLUGIN_TEMPLATE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<TemplateData>) : {};
+    return { values: parsed.values ?? {}, subject: parsed.subject, from: parsed.from };
+  } catch {
+    return { values: {} };
   }
 }
 

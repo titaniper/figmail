@@ -1,5 +1,5 @@
 import type { MainToUi, SelectedNodeInfo, UiToMain } from '../shared/messages';
-import { buildDocument, PLUGIN_DATA_KEY, readNodeData } from './traverse';
+import { buildDocument, PLUGIN_DATA_KEY, PLUGIN_TEMPLATE_KEY, readNodeData, readTemplateData } from './traverse';
 
 figma.showUI(__html__, { width: 720, height: 900, title: 'Figmail' });
 
@@ -30,6 +30,7 @@ async function capture(node: SceneNode) {
     type: 'document',
     doc,
     frame: { bytes, width: Math.round(node.width), height: Math.round(node.height) },
+    template: readTemplateData(node),
   });
 }
 
@@ -82,6 +83,13 @@ figma.ui.onmessage = async (message: UiToMain) => {
         node.setPluginData(PLUGIN_DATA_KEY, hasData ? JSON.stringify(message.data) : '');
         await recaptureRoot();
         reflectSelection();
+      }
+      break;
+    }
+    case 'saveTemplate': {
+      if (rootId) {
+        const root = figma.getNodeById(rootId);
+        if (root) root.setPluginData(PLUGIN_TEMPLATE_KEY, JSON.stringify(message.data));
       }
       break;
     }

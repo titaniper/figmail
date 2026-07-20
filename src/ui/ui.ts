@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import mjml2html from 'mjml-browser';
 import type { Binding, EmailDocument, ImageContent } from '../ir/types';
-import type { FrameImage, MainToUi, NodeData, SelectedNodeInfo, UiToMain } from '../shared/messages';
+import type { FrameImage, MainToUi, NodeData, SelectedNodeInfo, TemplateData, UiToMain } from '../shared/messages';
 import { renderMjml, type RenderOptions } from '../render/mjml';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -42,6 +42,7 @@ let variablesMode = false;
 let textDoc: EmailDocument | undefined;
 let imageDoc: EmailDocument | undefined;
 let selectedNode: SelectedNodeInfo | null = null;
+let template: TemplateData = { values: {} };
 let currentHtml = '';
 
 function post(message: UiToMain) {
@@ -104,7 +105,11 @@ function collectImages(doc: EmailDocument): ImageContent[] {
 }
 
 function opts(): RenderOptions {
-  return { variables: mode === 'text' && variablesMode };
+  return { variables: mode === 'text' && variablesMode, values: template.values };
+}
+
+function saveTemplate(): void {
+  post({ type: 'saveTemplate', data: template });
 }
 
 function renderWith(doc: EmailDocument, resolveSrc: (image: ImageContent) => string): string {
@@ -162,11 +167,26 @@ function renderVariablesList(): void {
   variablesList.innerHTML = vars
     .map(
       (v) =>
-        `<div class="var-item"><code>{{ ${esc(v.name)} }}</code> <span class="meta">${v.type}${
-          v.sample ? ` · ${esc(v.sample.slice(0, 40))}` : ''
-        }</span></div>`,
+        `<div class="var-item">
+          <div><code>{{ ${esc(v.name)} }}</code> <span class="meta">${v.type}${
+            v.sample ? ` · ${esc(v.sample.slice(0, 40))}` : ''
+          }</span></div>
+          <input class="var-value" data-name="${esc(v.name)}" placeholder="value (applied)" value="${esc(
+            template.values[v.name] ?? '',
+          )}">
+        </div>`,
     )
     .join('');
+
+  variablesList.querySelectorAll<HTMLInputElement>('.var-value').forEach((input) => {
+    input.oninput = () => {
+      const name = input.dataset.name as string;
+      if (input.value) template.values[name] = input.value;
+      else delete template.values[name];
+      saveTemplate();
+      if (!variablesMode) renderCurrent(); // applied values show in Mockup
+    };
+  });
 }
 
 function sendBind(data: NodeData): void {
@@ -232,6 +252,11 @@ window.onmessage = (event: MessageEvent) => {
     case 'document':
       textDoc = message.doc;
       imageDoc = frameToDocument(message.frame);
+      template = message.template;
+      if (template.subject !== undefined) subjectInput.value = template.subject;
+      if (template.from !== undefined) fromInput.value = template.from;
+      applySubjectToChrome();
+      applyFromToChrome();
       renderCurrent();
       renderVariablesList();
       break;
@@ -279,16 +304,26 @@ clientSelect.onchange = () => {
   clientView.dataset.client = clientSelect.value;
 };
 
-subjectInput.oninput = () => {
+function applySubjectToChrome(): void {
   mailSubject.textContent = subjectInput.value || 'No subject';
-};
-fromInput.oninput = () => {
+}
+function applyFromToChrome(): void {
   const match = fromInput.value.match(/^\s*(.*?)\s*<(.+?)>\s*$/);
   const name = match ? match[1] : fromInput.value;
   const addr = match ? match[2] : '';
   mailFromName.textContent = name || 'Sender';
   mailFromAddr.textContent = addr ? `<${addr}>` : '';
   avatar.textContent = (name || 'S').trim().charAt(0).toUpperCase();
+}
+subjectInput.oninput = () => {
+  applySubjectToChrome();
+  template.subject = subjectInput.value;
+  saveTemplate();
+};
+fromInput.oninput = () => {
+  applyFromToChrome();
+  template.from = fromInput.value;
+  saveTemplate();
 };
 
 captureBtn.onclick = () => post({ type: 'capture' });
@@ -328,7 +363,12 @@ downloadBtn.onclick = async () => {
     if (image.bytes && !(useVars && image.binding)) imageFolder.file(`${image.id}.png`, image.bytes);
   }
 
-  const vars = gatherVariables(textDoc);
+  const vars = gatherVariables(textDoc).map((v) => ({
+    name: v.name,
+    type: v.type,
+    sample: v.sample,
+    value: template.values[v.name] ?? '',
+  }));
   if (vars.length > 0) {
     root.file('variables.json', JSON.stringify(vars, null, 2));
   }

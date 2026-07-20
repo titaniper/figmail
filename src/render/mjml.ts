@@ -106,13 +106,24 @@ function renderRun(run: TextRun, base: TextStyle): string {
   return declarations.length ? `<span style="${declarations.join(';')}">${text}</span>` : text;
 }
 
-/** Render options. `variables: true` emits handlebars placeholders for bound nodes. */
+/**
+ * Render options.
+ * - `variables: true` emits handlebars placeholders (`{{ name }}`) for bound nodes.
+ * - `values` supplies applied values per variable name for mockup rendering.
+ */
 export interface RenderOptions {
   variables?: boolean;
+  values?: Record<string, string>;
 }
 
 function handlebars(name: string): string {
   return `{{ ${name} }}`;
+}
+
+/** Resolved value for a bound node in mockup mode: applied value if set, else undefined. */
+function appliedValue(name: string, opts: RenderOptions): string | undefined {
+  const value = opts.values?.[name];
+  return value !== undefined && value !== '' ? value : undefined;
 }
 
 function renderText(content: TextContent, opts: RenderOptions): string {
@@ -125,15 +136,22 @@ function renderText(content: TextContent, opts: RenderOptions): string {
     'letter-spacing': s.letterSpacing ? `${s.letterSpacing}px` : undefined,
     align: s.align,
   });
-  const inner =
-    opts.variables && content.binding
-      ? handlebars(content.binding.name)
-      : content.runs.map((run) => renderRun(run, s)).join('');
+  let inner: string;
+  if (opts.variables && content.binding) {
+    inner = handlebars(content.binding.name);
+  } else {
+    const value = content.binding && appliedValue(content.binding.name, opts);
+    inner = value !== undefined ? esc(value) : content.runs.map((run) => renderRun(run, s)).join('');
+  }
   return `<mj-text ${a}>${inner}</mj-text>`;
 }
 
 function renderImage(content: ImageContent, opts: RenderOptions): string {
-  const src = opts.variables && content.binding ? handlebars(content.binding.name) : (content.src ?? '');
+  let src = content.src ?? '';
+  if (content.binding) {
+    if (opts.variables) src = handlebars(content.binding.name);
+    else src = appliedValue(content.binding.name, opts) ?? src;
+  }
   const a = attrs({ src, alt: esc(content.alt), width: px(content.width) });
   return `<mj-image ${a} />`;
 }
@@ -142,7 +160,10 @@ function renderButton(content: ButtonContent, opts: RenderOptions): string {
   const href =
     opts.variables && content.binding
       ? handlebars(content.binding.name)
-      : (content.href ?? content.binding?.sample ?? '#');
+      : ((content.binding && appliedValue(content.binding.name, opts)) ??
+        content.href ??
+        content.binding?.sample ??
+        '#');
   const a = attrs({
     'background-color': content.style.backgroundColor ?? '#000000',
     color: content.style.color ?? '#ffffff',
