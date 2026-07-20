@@ -14,15 +14,20 @@ Figma로 디자인한 이메일을 손으로 `<table>`/inline-CSS HTML로 옮기
 **In scope (MVP)**
 
 - 선택한 프레임 1개 → 이메일 HTML 변환
+- 두 가지 export 모드:
+  - **Exact (image)** — 프레임 전체를 2x PNG로 rasterize해 한 장 이미지로 감싼다.
+    폰트·배경·레이아웃이 **원본 그대로** 재현된다 (기본 모드).
+  - **Text (editable)** — 노드를 의미 기반으로 매핑(텍스트는 선택 가능). 이메일
+    HTML 제약상 원본과 근사하며 편집·번역이 쉽다.
 - 프리뷰(플러그인 UI 안), HTML 복사, zip 폴더 export
-- 텍스트 / 이미지 / 버튼 / 아이콘·일러스트 매핑
+- 텍스트 / 이미지 / 버튼 / 아이콘·일러스트 매핑 (Text 모드)
+- 플러그인 창 크기 조절(우하단 드래그 핸들)
 
 **Out of scope (현재)**
 
 - 다중 프레임 동시 export
 - 반응형 breakpoint, 다크모드 변형
-- gradient / stroke / shadow의 정밀 재현
-- 텍스트 노드 내부의 혼합 스타일(부분 볼드 등)
+- Text 모드에서 gradient / stroke / shadow의 정밀 재현, 레이어 겹침(z-order) 재현
 
 ## 파이프라인
 
@@ -41,6 +46,11 @@ render 매핑을 단순하게 유지한다.
 
 - **R1** 프레임이 선택되지 않았으면 안내 메시지를 표시한다.
 - **R2** 선택이 바뀌면 프리뷰가 자동으로 갱신된다.
+- **R2a** 모드 토글(Exact/Text)을 제공하며 기본은 **Exact**다. 두 모드 모두
+  프리뷰·복사·export가 동일하게 동작한다.
+- **R2b** Exact 모드는 선택 프레임 전체를 2x PNG로 export해 body 폭 = 프레임 폭인
+  단일 `mj-image`로 감싼다 → 원본과 픽셀 단위로 동일.
+- **R2c** 플러그인 창은 우하단 핸들 드래그로 크기 조절된다(최소 320px).
 - **R3** 프레임 트리를 section의 **평탄한 리스트**로 선형화한다. 이메일 HTML은
   임의 중첩이 불가하므로(MJML: body > section > column > content), 세로 스택을
   펼친다: leaf 묶음은 단일 column section, 가로 행은 다중 column section, 가로
