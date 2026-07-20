@@ -132,6 +132,29 @@
     position: fixed; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
     background: linear-gradient(135deg, transparent 50%, #b8bcc4 50%); z-index: 10;
   }
+
+  /* Onboarding / empty state */
+  #onboarding {
+    position: absolute; inset: 0; z-index: 20; background: #fff;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  #onboarding.hidden { display: none !important; }
+  .ob-card { max-width: 380px; width: 100%; text-align: center; }
+  .ob-card h2 { margin: 0 0 4px; font-size: 20px; }
+  .ob-card .tagline { color: #8a8f98; margin: 0 0 18px; }
+  .ob-card p { color: #444; margin: 14px 0 6px; font-size: 12px; }
+  .ob-list { display: flex; flex-direction: column; gap: 6px; }
+  .ob-open {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; border: 1px solid #e0e2e8; border-radius: 8px;
+    background: #f7f8fa; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+  .ob-open:hover { border-color: #3d4cff; }
+  .ob-create {
+    width: 100%; padding: 11px; border: none; border-radius: 8px;
+    background: #3d4cff; color: #fff; font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 4px;
+  }
+  .ob-hint { color: #8a8f98; font-size: 12px; margin-top: 8px; }
 </style>
 
 <header>
@@ -220,6 +243,7 @@
     </aside>
   </div>
   <textarea id="source" class="hidden" readonly></textarea>
+  <div id="onboarding"></div>
 </main>
 
 <footer>

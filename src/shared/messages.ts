@@ -53,6 +53,7 @@ export interface TemplateRef {
 export type MainToUi =
   | { type: 'document'; doc: EmailDocument; frame: FrameImage; template: TemplateData }
   | { type: 'templates'; list: TemplateRef[]; currentId: string | null }
+  | { type: 'idle'; candidate: TemplateRef | null }
   | { type: 'selection'; node: SelectedNodeInfo | null }
   | { type: 'error'; message: string };
 

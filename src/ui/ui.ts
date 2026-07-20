@@ -48,6 +48,7 @@ const templateAdd = $<HTMLButtonElement>('template-add');
 const newvarName = $<HTMLInputElement>('newvar-name');
 const newvarType = $<HTMLSelectElement>('newvar-type');
 const newvarAdd = $<HTMLButtonElement>('newvar-add');
+const onboarding = $<HTMLDivElement>('onboarding');
 
 const EXPORT_DIR = 'figmail-export';
 const IMAGE_DIR = 'images';
@@ -61,6 +62,8 @@ let selectedNode: SelectedNodeInfo | null = null;
 let template: TemplateData = { variables: [] };
 let templates: TemplateRef[] = [];
 let currentTemplateId: string | null = null;
+let candidate: TemplateRef | null = null;
+let hasDocument = false;
 let currentHtml = '';
 
 function post(message: UiToMain) {
@@ -333,6 +336,39 @@ function renderTemplateBar(): void {
   templateDelete.disabled = !current;
 }
 
+// --- onboarding (empty state) ---------------------------------------------
+
+function renderOnboarding(): void {
+  const parts: string[] = ['<h2>Figmail</h2>', '<p class="tagline">Turn a Figma frame into an email.</p>'];
+
+  if (templates.length > 0) {
+    parts.push('<p>Open a saved email</p>');
+    parts.push(
+      `<div class="ob-list">${templates
+        .map((t) => `<button class="ob-open" data-id="${esc(t.id)}"><span>${esc(t.name)}</span><span>→</span></button>`)
+        .join('')}</div>`,
+    );
+  }
+
+  if (candidate) {
+    parts.push(`<p>${templates.length ? 'Or create a new one' : 'Create from your selection'}</p>`);
+    parts.push(`<button class="ob-create">＋ Create “${esc(candidate.name)}”</button>`);
+  } else {
+    parts.push(
+      `<p class="ob-hint">Select a frame in Figma${templates.length ? ' to create a new email' : ' to get started'}.</p>`,
+    );
+  }
+
+  onboarding.innerHTML = `<div class="ob-card">${parts.join('')}</div>`;
+  onboarding.querySelectorAll<HTMLButtonElement>('.ob-open').forEach((btn) => {
+    btn.onclick = () => post({ type: 'selectTemplate', id: btn.dataset.id as string });
+  });
+  const createBtn = onboarding.querySelector('.ob-create') as HTMLButtonElement | null;
+  if (createBtn) createBtn.onclick = () => post({ type: 'capture' });
+
+  onboarding.classList.remove('hidden');
+}
+
 // --- messages --------------------------------------------------------------
 
 function applySubjectToChrome(): void {
@@ -359,6 +395,8 @@ window.onmessage = (event: MessageEvent) => {
       if (template.from !== undefined) fromInput.value = template.from;
       applySubjectToChrome();
       applyFromToChrome();
+      hasDocument = true;
+      onboarding.classList.add('hidden');
       renderCurrent();
       renderVariablesList();
       break;
@@ -366,6 +404,12 @@ window.onmessage = (event: MessageEvent) => {
       templates = message.list;
       currentTemplateId = message.currentId;
       renderTemplateBar();
+      if (message.currentId === null) hasDocument = false;
+      if (!hasDocument) renderOnboarding();
+      break;
+    case 'idle':
+      candidate = message.candidate;
+      if (!hasDocument) renderOnboarding();
       break;
     case 'selection':
       selectedNode = message.node;

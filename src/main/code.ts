@@ -30,6 +30,19 @@ function postTemplates() {
   post({ type: 'templates', list: readRegistry(), currentId: rootId ?? null });
 }
 
+/** A frame-like current selection that could be captured as a template. */
+function candidateFromSelection(): TemplateRef | null {
+  const selection = figma.currentPage.selection;
+  if (selection.length === 1 && 'exportAsync' in selection[0]) {
+    return { id: selection[0].id, name: selection[0].name || 'Untitled' };
+  }
+  return null;
+}
+
+function postIdle() {
+  post({ type: 'idle', candidate: candidateFromSelection() });
+}
+
 function nodeKind(node: SceneNode): SelectedNodeInfo['kind'] {
   if (node.type === 'TEXT') return 'text';
   if (/button|btn|cta/i.test(node.name)) return 'button';
@@ -103,13 +116,10 @@ async function captureById(id: string) {
 figma.ui.onmessage = async (message: UiToMain) => {
   switch (message.type) {
     case 'ready': {
-      const registry = readRegistry();
-      const existing = registry.find((t) => figma.getNodeById(t.id));
-      const selection = figma.currentPage.selection;
-      if (existing) await captureById(existing.id);
-      else if (selection.length > 0) await capture(selection[0]);
-      else postTemplates();
+      // Don't auto-capture — let the user choose in the onboarding screen.
+      postTemplates();
       reflectSelection();
+      postIdle();
       break;
     }
     case 'capture': {
@@ -159,4 +169,7 @@ figma.ui.onmessage = async (message: UiToMain) => {
   }
 };
 
-figma.on('selectionchange', reflectSelection);
+figma.on('selectionchange', () => {
+  reflectSelection();
+  if (!rootId) postIdle(); // keep the onboarding candidate fresh until a template is active
+});
