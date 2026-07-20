@@ -55,6 +55,10 @@ render 매핑을 단순하게 유지한다.
 - **R10** export는 zip 폴더로 받는다: `figmail-export/email.html` +
   `figmail-export/images/<id>.png`, HTML은 이미지를 **상대 경로**로 참조한다.
 - **R11** 숨김(visible=false) 또는 opacity 0 노드는 제외한다.
+- **R12** 텍스트 폰트는 (a) 디자인 폰트를 우선하는 fallback 스택
+  (`'디자인폰트', Helvetica, Arial, sans-serif` / serif면 serif 계열)으로 지정하고,
+  (b) 사용된 폰트를 `mj-head`의 `mj-font`로 Google Fonts에서 로드 시도한다.
+  Google Fonts에 없는 폰트는 무해하게 실패하고 fallback으로 떨어진다.
 
 ## 동작 규칙 (노드 매핑)
 
@@ -78,6 +82,8 @@ render 매핑을 단순하게 유지한다.
 - **A4** export한 zip을 풀면 `email.html`과 `images/` 폴더가 있고, `email.html`을
   열면 `images/`의 PNG를 참조해 디자인이 그대로 재현된다. (R10)
 - **A5** 생성된 HTML이 MJML 컴파일에서 치명적 에러 없이 통과한다.
+- **A6** Google Fonts에 있는 디자인 폰트(Inter, Roboto 등)는 프리뷰에서 해당
+  폰트로 렌더되고, 없는 폰트는 fallback 스택으로 렌더된다. (R12)
 
 ## 한계 & 로드맵
 

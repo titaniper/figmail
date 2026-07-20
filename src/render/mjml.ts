@@ -35,11 +35,57 @@ function padding(style: BoxStyle): string | undefined {
   return `${t ?? 0}px ${r ?? 0}px ${b ?? 0}px ${l ?? 0}px`;
 }
 
+// --- fonts -----------------------------------------------------------------
+
+function isSerif(family: string): boolean {
+  return /serif|times|georgia|garamond|playfair|merriweather/i.test(family) && !/sans/i.test(family);
+}
+
+/**
+ * A resilient font stack: the design font first (quoted, since it may contain
+ * spaces), then web-safe fallbacks. Email clients that don't load web fonts
+ * degrade gracefully instead of dropping to an unrelated default.
+ */
+function fontStack(family?: string): string | undefined {
+  if (!family) return undefined;
+  const fallback = isSerif(family) ? 'Georgia, Times New Roman, serif' : 'Helvetica, Arial, sans-serif';
+  return `'${family}', ${fallback}`;
+}
+
+function collectFonts(doc: EmailDocument): string[] {
+  const families = new Set<string>();
+  for (const section of doc.sections) {
+    for (const column of section.columns) {
+      for (const content of column.contents) {
+        if (content.type === 'text' && content.style.fontFamily) {
+          families.add(content.style.fontFamily);
+        }
+      }
+    }
+  }
+  return [...families];
+}
+
+/**
+ * Registers each design font as a Google Fonts import. Non-Google families
+ * simply 404 harmlessly and fall through to the fallback stack, so this is
+ * safe to emit unconditionally.
+ */
+function renderHead(doc: EmailDocument): string {
+  const fonts = collectFonts(doc)
+    .map((family) => {
+      const href = `https://fonts.googleapis.com/css?family=${family.replace(/ /g, '+')}`;
+      return `<mj-font name="${family}" href="${href}" />`;
+    })
+    .join('\n    ');
+  return fonts ? `<mj-head>\n    ${fonts}\n  </mj-head>` : '';
+}
+
 function renderText(content: TextContent): string {
   const s: TextStyle = content.style;
   const a = attrs({
     color: s.color,
-    'font-family': s.fontFamily,
+    'font-family': fontStack(s.fontFamily),
     'font-size': px(s.fontSize),
     'font-weight': s.fontWeight ? String(s.fontWeight) : undefined,
     'line-height': px(s.lineHeight),
@@ -103,8 +149,10 @@ function renderSection(section: Section): string {
 }
 
 export function renderMjml(doc: EmailDocument): string {
+  const head = renderHead(doc);
   const sections = doc.sections.map(renderSection).join('\n  ');
   return `<mjml>
+  ${head}
   <mj-body ${attrs({ 'background-color': doc.backgroundColor, width: px(doc.width) })}>
   ${sections}
   </mj-body>
