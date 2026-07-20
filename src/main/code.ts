@@ -54,11 +54,6 @@ function nodeKind(node: SceneNode): SelectedNodeInfo['kind'] {
 
 /** Capture a node as the active template, registering it if new. */
 async function capture(node: SceneNode) {
-  if (!('exportAsync' in node)) {
-    post({ type: 'error', message: `"${node.name}" can't be exported — select a frame or component.` });
-    return;
-  }
-
   try {
     const doc = await buildDocument(node);
     const bytes = await (
