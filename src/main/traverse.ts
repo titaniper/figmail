@@ -131,13 +131,20 @@ function isFlattenableGraphic(node: SceneNode): boolean {
 
 let imageCounter = 0;
 
-async function toImage(node: SceneNode): Promise<Content> {
-  imageCounter += 1;
+async function toImage(node: SceneNode): Promise<Content | null> {
+  if (node.width < 1 || node.height < 1) return null;
+
   const bytes = await (
     node as SceneNode & {
       exportAsync: (s: ExportSettingsImage) => Promise<Uint8Array>;
     }
   ).exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 2 } });
+
+  // A zero-byte export would render as a broken image showing only its alt
+  // (layer name) — drop it instead of emitting that noise.
+  if (!bytes || bytes.length === 0) return null;
+
+  imageCounter += 1;
   return {
     type: 'image',
     id: `image-${imageCounter}`,
@@ -166,7 +173,8 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
   }
 
   if (hasImageFill(node) || isFlattenableGraphic(node)) {
-    return [await toImage(node)];
+    const image = await toImage(node);
+    return image ? [image] : [];
   }
 
   if (isContainer(node) && 'children' in node) {
