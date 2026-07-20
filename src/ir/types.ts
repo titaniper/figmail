@@ -31,11 +31,23 @@ export interface TextRun {
   italic?: boolean;
 }
 
+/**
+ * A manual binding of a node to a template variable. `sample` is the mockup
+ * value shown in preview; export emits the handlebars placeholder `{{ name }}`.
+ */
+export interface Binding {
+  name: string;
+  type: 'text' | 'url' | 'image';
+  sample?: string;
+}
+
 export interface TextContent {
   type: 'text';
   runs: TextRun[];
   /** Base style for the paragraph (family, size, line-height, align). */
   style: TextStyle;
+  /** When set, the whole text is a variable (`{{ name }}`) in Variables/export mode. */
+  binding?: Binding;
 }
 
 export interface ImageContent {
@@ -49,6 +61,8 @@ export interface ImageContent {
   width: number;
   height: number;
   alt: string;
+  /** When set, export uses `{{ name }}` as the image src instead of a file. */
+  binding?: Binding;
 }
 
 export interface ButtonContent {
@@ -56,6 +70,8 @@ export interface ButtonContent {
   label: string;
   href?: string;
   style: TextStyle & BoxStyle;
+  /** When set, export uses `{{ name }}` as the href. */
+  binding?: Binding;
 }
 
 export interface SpacerContent {

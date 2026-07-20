@@ -1,4 +1,16 @@
 import type { BoxStyle, Column, Content, EmailDocument, Section, TextRun, TextStyle } from '../ir/types';
+import type { NodeData } from '../shared/messages';
+
+export const PLUGIN_DATA_KEY = 'figmail';
+
+export function readNodeData(node: BaseNode): NodeData {
+  try {
+    const raw = node.getPluginData(PLUGIN_DATA_KEY);
+    return raw ? (JSON.parse(raw) as NodeData) : {};
+  } catch {
+    return {};
+  }
+}
 
 // --- color helpers ---------------------------------------------------------
 
@@ -90,7 +102,8 @@ function buildText(node: TextNode): Content[] {
     style.lineHeight = node.lineHeight.value;
   }
 
-  return [{ type: 'text', runs, style }];
+  const binding = readNodeData(node).binding;
+  return [{ type: 'text', runs, style, binding }];
 }
 
 // --- content extraction ----------------------------------------------------
@@ -152,6 +165,7 @@ async function toImage(node: SceneNode): Promise<Content | null> {
     width: Math.round(node.width),
     height: Math.round(node.height),
     alt: node.name,
+    binding: readNodeData(node).binding,
   };
 }
 
@@ -163,11 +177,14 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
 
   if (looksLikeButton(node)) {
     const label = node.type !== 'FRAME' ? node.name : (firstText(node) ?? node.name);
+    const data = readNodeData(node);
     return [
       {
         type: 'button',
         label,
         style: { ...boxStyle(node), align: 'center' },
+        href: data.href,
+        binding: data.binding,
       },
     ];
   }

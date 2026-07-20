@@ -19,12 +19,7 @@
     flex-wrap: wrap;
   }
   header strong { font-size: 13px; }
-  .segmented {
-    display: inline-flex;
-    background: #f0f1f4;
-    border-radius: 8px;
-    padding: 2px;
-  }
+  .segmented { display: inline-flex; background: #f0f1f4; border-radius: 8px; padding: 2px; }
   .segmented button {
     border: none;
     background: transparent;
@@ -40,36 +35,19 @@
     font-weight: 600;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
-  select {
-    font-size: 12px;
-    padding: 5px 8px;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    background: #fff;
-  }
+  select { font-size: 12px; padding: 5px 8px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; }
   .tabs { margin-left: auto; }
 
-  /* Settings strip (sender / subject) */
-  #settings {
-    display: flex;
-    gap: 8px;
-    padding: 8px 12px;
-    border-bottom: 1px solid #eee;
-    background: #fafafa;
-  }
-  #settings input {
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 5px 8px;
-    font-size: 12px;
-  }
+  #settings { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #eee; background: #fafafa; }
+  #settings input { border: 1px solid #e0e0e0; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
   #subject { flex: 2; }
   #from { flex: 1; }
 
-  main { flex: 1; overflow: auto; position: relative; }
+  main { flex: 1; overflow: hidden; position: relative; }
+  #workarea { display: flex; height: 100%; }
 
   /* Client (inbox) chrome */
-  #client-view { min-height: 100%; background: #f2f4f7; padding: 20px; }
+  #client-view { flex: 1; overflow: auto; background: #f2f4f7; padding: 20px; }
   #mail-card {
     max-width: 900px;
     margin: 0 auto;
@@ -78,93 +56,65 @@
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
     overflow: hidden;
   }
-  #mail-subject {
-    padding: 16px 20px 4px;
-    font-size: 18px;
-    font-weight: 600;
-    color: #202124;
-  }
-  #mail-meta {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 20px 14px;
-    border-bottom: 1px solid #f0f0f0;
-  }
+  #mail-subject { padding: 16px 20px 4px; font-size: 18px; font-weight: 600; color: #202124; }
+  #mail-meta { display: flex; align-items: center; gap: 10px; padding: 8px 20px 14px; border-bottom: 1px solid #f0f0f0; }
   #avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: #1a56ff;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    flex-shrink: 0;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: #1a56ff; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; flex-shrink: 0;
   }
   #mail-from { flex: 1; line-height: 1.4; }
   #mail-from .name { font-weight: 600; color: #202124; }
-  #mail-from .addr,
-  #mail-from .to { color: #5f6368; font-size: 11px; }
+  #mail-from .addr, #mail-from .to { color: #5f6368; font-size: 11px; }
   #mail-date { color: #5f6368; font-size: 11px; white-space: nowrap; }
   #preview { width: 100%; border: none; display: block; background: #fff; }
 
-  /* Client variants */
   #client-view[data-client='apple'] #mail-card { max-width: 680px; }
   #client-view[data-client='outlook'] #mail-card { max-width: 600px; border-radius: 4px; }
   #client-view.dark { background: #1b1b1b; }
   #client-view.dark #mail-card { background: #2a2a2a; }
-  #client-view.dark #mail-subject { color: #e8eaed; }
-  #client-view.dark #mail-from .name { color: #e8eaed; }
+  #client-view.dark #mail-subject, #client-view.dark #mail-from .name { color: #e8eaed; }
+
+  /* Variables panel */
+  #panel { width: 280px; flex-shrink: 0; border-left: 1px solid #e6e6e6; overflow: auto; padding: 12px; background: #fff; }
+  .panel-btn {
+    width: 100%; padding: 8px; border: 1px solid #d7d9e0; border-radius: 8px;
+    background: #f7f8fa; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+  .panel-note { color: #8a8f98; font-size: 11px; margin: 6px 0 12px; }
+  .panel-section { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
+  .panel-title { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; margin-bottom: 8px; }
+  .muted { color: #8a8f98; font-size: 11px; }
+  .field { margin-bottom: 8px; }
+  .field label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 3px; }
+  .field input {
+    width: 100%; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  }
+  .row-btns { display: flex; gap: 6px; }
+  .row-btns button { flex: 1; padding: 6px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+  .bind { background: #3d4cff; color: #fff; }
+  .unbind { background: #eef0f2; color: #333; }
+  .var-item { padding: 6px 8px; border: 1px solid #eee; border-radius: 6px; margin-bottom: 6px; }
+  .var-item code { color: #3d4cff; font-weight: 600; }
+  .var-item .meta { color: #8a8f98; font-size: 10px; }
+  .kind-chip { display: inline-block; padding: 1px 6px; border-radius: 4px; background: #eef0ff; color: #3d4cff; font-size: 10px; font-weight: 600; margin-bottom: 6px; }
 
   #source {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 12px;
-    border: none;
-    resize: none;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px;
-    white-space: pre;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    width: 100%; height: 100%; margin: 0; padding: 12px; border: none; resize: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+    white-space: pre; background: #1e1e1e; color: #d4d4d4;
   }
   .hidden { display: none !important; }
 
-  footer {
-    display: flex;
-    gap: 8px;
-    padding: 10px 12px;
-    border-top: 1px solid #e6e6e6;
-  }
-  footer button {
-    flex: 1;
-    padding: 8px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-  }
+  footer { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #e6e6e6; }
+  footer button { flex: 1; padding: 8px; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; }
   .primary { background: #3d4cff; color: #fff; }
   .secondary { background: #eef0f2; color: #1a1a1a; }
-  #status {
-    padding: 8px 12px;
-    color: #b00020;
-    background: #fff4f4;
-    font-size: 12px;
-  }
+  #status { padding: 8px 12px; color: #b00020; background: #fff4f4; font-size: 12px; }
   #resize {
-    position: fixed;
-    right: 0;
-    bottom: 0;
-    width: 16px;
-    height: 16px;
-    cursor: nwse-resize;
-    background: linear-gradient(135deg, transparent 50%, #b8bcc4 50%);
-    z-index: 10;
+    position: fixed; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, #b8bcc4 50%); z-index: 10;
   }
 </style>
 
@@ -197,19 +147,44 @@
 <div id="status" class="hidden"></div>
 
 <main>
-  <div id="client-view" data-client="gmail">
-    <div id="mail-card">
-      <div id="mail-subject">Your Haulla invoice</div>
-      <div id="mail-meta">
-        <div id="avatar">H</div>
-        <div id="mail-from">
-          <div><span class="name">Haulla</span> <span class="addr">&lt;no-reply@haulla.com&gt;</span></div>
-          <div class="to">to me</div>
+  <div id="workarea">
+    <div id="client-view" data-client="gmail">
+      <div id="mail-card">
+        <div id="mail-subject">Your Haulla invoice</div>
+        <div id="mail-meta">
+          <div id="avatar">H</div>
+          <div id="mail-from">
+            <div><span class="name">Haulla</span> <span class="addr">&lt;no-reply@haulla.com&gt;</span></div>
+            <div class="to">to me</div>
+          </div>
+          <div id="mail-date">now</div>
         </div>
-        <div id="mail-date">now</div>
+        <iframe id="preview"></iframe>
       </div>
-      <iframe id="preview"></iframe>
     </div>
+
+    <aside id="panel">
+      <button id="capture" class="panel-btn">⟳ Capture selected frame</button>
+      <div class="panel-note">Select a frame, then bind variables to text / links / images (Text mode).</div>
+
+      <div class="panel-section">
+        <div class="panel-title">Preview values</div>
+        <div class="segmented" id="varmode">
+          <button id="var-mockup" class="active">Mockup</button>
+          <button id="var-vars">Variables</button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title">Selection</div>
+        <div id="selection-body" class="muted">Select a text, button, or image layer in Figma.</div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title">Variables</div>
+        <div id="variables-list" class="muted">None yet.</div>
+      </div>
+    </aside>
   </div>
   <textarea id="source" class="hidden" readonly></textarea>
 </main>

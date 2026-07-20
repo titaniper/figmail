@@ -106,7 +106,16 @@ function renderRun(run: TextRun, base: TextStyle): string {
   return declarations.length ? `<span style="${declarations.join(';')}">${text}</span>` : text;
 }
 
-function renderText(content: TextContent): string {
+/** Render options. `variables: true` emits handlebars placeholders for bound nodes. */
+export interface RenderOptions {
+  variables?: boolean;
+}
+
+function handlebars(name: string): string {
+  return `{{ ${name} }}`;
+}
+
+function renderText(content: TextContent, opts: RenderOptions): string {
   const s: TextStyle = content.style;
   const a = attrs({
     color: s.color,
@@ -116,66 +125,70 @@ function renderText(content: TextContent): string {
     'letter-spacing': s.letterSpacing ? `${s.letterSpacing}px` : undefined,
     align: s.align,
   });
-  const inner = content.runs.map((run) => renderRun(run, s)).join('');
+  const inner =
+    opts.variables && content.binding
+      ? handlebars(content.binding.name)
+      : content.runs.map((run) => renderRun(run, s)).join('');
   return `<mj-text ${a}>${inner}</mj-text>`;
 }
 
-function renderImage(content: ImageContent): string {
-  const a = attrs({
-    src: content.src ?? '',
-    alt: esc(content.alt),
-    width: px(content.width),
-  });
+function renderImage(content: ImageContent, opts: RenderOptions): string {
+  const src = opts.variables && content.binding ? handlebars(content.binding.name) : (content.src ?? '');
+  const a = attrs({ src, alt: esc(content.alt), width: px(content.width) });
   return `<mj-image ${a} />`;
 }
 
-function renderButton(content: ButtonContent): string {
+function renderButton(content: ButtonContent, opts: RenderOptions): string {
+  const href =
+    opts.variables && content.binding
+      ? handlebars(content.binding.name)
+      : (content.href ?? content.binding?.sample ?? '#');
   const a = attrs({
     'background-color': content.style.backgroundColor ?? '#000000',
     color: content.style.color ?? '#ffffff',
     'font-size': px(content.style.fontSize),
     'border-radius': px(content.style.borderRadius),
-    href: content.href ?? '#',
+    href,
     align: content.style.align ?? 'center',
   });
   return `<mj-button ${a}>${esc(content.label)}</mj-button>`;
 }
 
-function renderContent(content: Content): string {
+function renderContent(content: Content, opts: RenderOptions): string {
   switch (content.type) {
     case 'text':
-      return renderText(content);
+      return renderText(content, opts);
     case 'image':
-      return renderImage(content);
+      return renderImage(content, opts);
     case 'button':
-      return renderButton(content);
+      return renderButton(content, opts);
     case 'spacer':
       return `<mj-spacer height="${content.height}px" />`;
   }
 }
 
-function renderColumn(column: Column): string {
+function renderColumn(column: Column, opts: RenderOptions): string {
   const a = attrs({
     width: column.widthPct !== undefined ? `${column.widthPct}%` : undefined,
     'background-color': column.style.backgroundColor,
     padding: padding(column.style),
   });
-  const body = column.contents.map(renderContent).join('\n      ');
+  const body = column.contents.map((c) => renderContent(c, opts)).join('\n      ');
   return `<mj-column ${a}>\n      ${body}\n    </mj-column>`;
 }
 
-function renderSection(section: Section): string {
+function renderSection(section: Section, opts: RenderOptions): string {
   const a = attrs({
     'background-color': section.style.backgroundColor,
     padding: padding(section.style) ?? '0',
   });
-  const columns = section.columns.map(renderColumn).join('\n    ');
+  const columns = section.columns.map((c) => renderColumn(c, opts)).join('\n    ');
   return `<mj-section ${a}>\n    ${columns}\n  </mj-section>`;
 }
 
-export function renderMjml(doc: EmailDocument): string {
+export function renderMjml(doc: EmailDocument, opts: RenderOptions = {}): string {
   const head = renderHead(doc);
-  const sections = doc.sections.map(renderSection).join('\n  ');
+  const sections = doc.sections.map((s) => renderSection(s, opts)).join('\n  ');
   return `<mjml>
   ${head}
   <mj-body ${attrs({ 'background-color': doc.backgroundColor, width: px(doc.width) })}>
