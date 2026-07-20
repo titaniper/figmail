@@ -41,11 +41,18 @@ render 매핑을 단순하게 유지한다.
 
 - **R1** 프레임이 선택되지 않았으면 안내 메시지를 표시한다.
 - **R2** 선택이 바뀌면 프리뷰가 자동으로 갱신된다.
-- **R3** 루트 프레임의 각 직계 자식은 하나의 section이 된다.
-- **R4** 가로(auto layout HORIZONTAL) 자식은 다중 column section이 된다
-  (손자 1개 = column 1개).
-- **R5** 텍스트는 선택 가능한 텍스트(`mj-text`)로 유지한다 — 색/폰트/크기/굵기/
-  자간/행간/정렬을 반영한다.
+- **R3** 프레임 트리를 section의 **평탄한 리스트**로 선형화한다. 이메일 HTML은
+  임의 중첩이 불가하므로(MJML: body > section > column > content), 세로 스택을
+  펼친다: leaf 묶음은 단일 column section, 가로 행은 다중 column section, 가로
+  행을 품은 컨테이너는 재귀적으로 분해한다.
+- **R4** 가로(auto layout HORIZONTAL, 자식 2개 이상) 프레임은 **깊이에 상관없이**
+  다중 column section이 된다 (자식 1개 = column 1개).
+- **R5** 텍스트는 선택 가능한 텍스트(`mj-text`)로 유지한다 — 색/폰트/크기/자간/
+  행간/정렬을 반영한다.
+- **R5a** 텍스트 노드 내부의 **부분 스타일(run)** — 부분 볼드/기울임/색 — 을
+  `getStyledTextSegments`로 읽어 인라인 `<span>`으로 보존한다.
+- **R5b** auto-layout의 `itemSpacing`(자식 간 간격)을 spacer로 반영해 원본의
+  세로 리듬을 유지한다. MJML 기본 padding은 `mj-attributes`로 0으로 무력화한다.
 - **R6** 이미지 채우기(image fill)를 가진 노드는 PNG로 export해 `mj-image`로 넣는다.
 - **R7** 아이콘·일러스트(텍스트 없이 벡터로 구성된 그룹) 및 단일 벡터 노드는
   **한 장의 이미지로 flatten**해 원본 그대로 재현한다.
@@ -84,21 +91,29 @@ render 매핑을 단순하게 유지한다.
 - **A5** 생성된 HTML이 MJML 컴파일에서 치명적 에러 없이 통과한다.
 - **A6** Google Fonts에 있는 디자인 폰트(Inter, Roboto 등)는 프리뷰에서 해당
   폰트로 렌더되고, 없는 폰트는 fallback 스택으로 렌더된다. (R12)
+- **A7** 원본에서 문장 일부만 볼드/색이 다른 텍스트가, 미리보기에서도 동일하게
+  부분 스타일로 보인다. (R5a)
+- **A8** 가로로 배치된 카드/열이 세로로 쌓이지 않고 나란히 렌더된다. (R4)
+- **A9** 섹션·요소 간 간격이 원본의 auto-layout 간격에 근접한다(과도한 여백 없음). (R5b)
 
 ## 한계 & 로드맵
 
 **현재 한계**
 
-- 깊은 중첩 레이아웃은 거칠게 flatten된다 — 더 똑똑한 section/column 분할 필요.
+- column 안에 다시 가로 행이 중첩되면 column 내부는 세로로 flatten된다
+  (MJML은 column 안에 section을 못 넣음). 대부분의 이메일(세로 스택의 가로 행들)은
+  잘 처리되지만, 복잡한 그리드는 부분적으로만 재현된다.
+- 커스텀/브랜드 폰트는 이메일 클라이언트가 웹폰트를 무시하면 fallback으로 떨어진다
+  (이메일 HTML의 근본 제약).
 - data URL 이미지는 프리뷰/로컬에는 문제없지만, 실제 이메일 발송 시 다수
   클라이언트가 차단한다 → 호스팅된 이미지 URL이 필요하다.
-- gradient/stroke/shadow, 반응형 미지원.
+- 가로 행의 column 간 간격(가로 gap), gradient/stroke/shadow, 반응형 미지원.
 
 **로드맵**
 
-1. 중첩 레이아웃 section/column 분할 개선
-2. 호스팅 이미지 업로드 옵션(data URL → 실제 URL 치환)
-3. 텍스트 run 단위 스타일(부분 스타일) 지원
-4. 버튼 링크(프로토타입 interaction / 레이어 메타데이터)에서 `href` 추출
+1. 호스팅 이미지 업로드 옵션(data URL → 실제 URL 치환)
+2. 가로 행 column 간 gap 반영, column 폭 비율(자식 width 기반) 지정
+3. 버튼 링크(프로토타입 interaction / 레이어 메타데이터)에서 `href` 추출
+4. 폰트 100% 유지가 필요한 텍스트 블록의 이미지 rasterize 옵션
 5. 설정 패널(최대 폭, 폰트 fallback, 이미지 scale)
 6. `renderMjml` 유닛 테스트 + traverse fixture

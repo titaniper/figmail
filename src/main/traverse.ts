@@ -1,4 +1,4 @@
-import type { BoxStyle, Column, Content, EmailDocument, Section, TextStyle } from '../ir/types';
+import type { BoxStyle, Column, Content, EmailDocument, Section, TextRun, TextStyle } from '../ir/types';
 
 // --- color helpers ---------------------------------------------------------
 
@@ -53,31 +53,44 @@ function fontWeight(style: string): number {
   return 400;
 }
 
-function textStyle(node: TextNode): TextStyle {
-  const style: TextStyle = {};
-  style.color = solidFill(node.fills);
+function textAlign(node: TextNode): TextStyle['align'] {
+  if (node.textAlignHorizontal === 'CENTER') return 'center';
+  if (node.textAlignHorizontal === 'RIGHT') return 'right';
+  return 'left';
+}
+
+/**
+ * Builds a text content node, splitting the string into styled runs so inline
+ * weight/color changes (partial bold, colored spans) survive. The base style
+ * carries paragraph-level properties (family, size, line-height, align).
+ */
+function buildText(node: TextNode): Content[] {
+  if (node.characters.trim().length === 0) return [];
+
+  const segments = node.getStyledTextSegments(['fontName', 'fills']);
+  const runs: TextRun[] = segments
+    .filter((seg) => seg.characters.length > 0)
+    .map((seg) => ({
+      text: seg.characters,
+      fontWeight: fontWeight(seg.fontName.style),
+      italic: /italic/i.test(seg.fontName.style),
+      color: solidFill(seg.fills),
+    }));
+
+  const style: TextStyle = {
+    fontFamily: segments[0]?.fontName.family,
+    color: solidFill(node.fills) ?? runs[0]?.color,
+    align: textAlign(node),
+  };
   if (typeof node.fontSize === 'number') style.fontSize = node.fontSize;
-  if (node.fontName !== figma.mixed) {
-    style.fontFamily = node.fontName.family;
-    style.fontWeight = fontWeight(node.fontName.style);
-  }
   if (typeof node.letterSpacing !== 'symbol' && node.letterSpacing.unit === 'PIXELS') {
     style.letterSpacing = node.letterSpacing.value;
   }
   if (node.lineHeight !== figma.mixed && node.lineHeight.unit === 'PIXELS') {
     style.lineHeight = node.lineHeight.value;
   }
-  switch (node.textAlignHorizontal) {
-    case 'CENTER':
-      style.align = 'center';
-      break;
-    case 'RIGHT':
-      style.align = 'right';
-      break;
-    default:
-      style.align = 'left';
-  }
-  return style;
+
+  return [{ type: 'text', runs, style }];
 }
 
 // --- content extraction ----------------------------------------------------
@@ -139,10 +152,7 @@ async function toImage(node: SceneNode): Promise<Content> {
 async function collectContents(node: SceneNode): Promise<Content[]> {
   if (node.visible === false || ('opacity' in node && node.opacity === 0)) return [];
 
-  if (node.type === 'TEXT') {
-    const text = node.characters.trim();
-    return text ? [{ type: 'text', text, style: textStyle(node) }] : [];
-  }
+  if (node.type === 'TEXT') return buildText(node);
 
   if (looksLikeButton(node)) {
     const label = node.type !== 'FRAME' ? node.name : (firstText(node) ?? node.name);
@@ -160,14 +170,27 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
   }
 
   if (isContainer(node) && 'children' in node) {
+    const gap = layoutGap(node);
     const nested: Content[] = [];
     for (const child of node.children) {
-      nested.push(...(await collectContents(child)));
+      if (child.visible === false) continue;
+      const childContents = await collectContents(child);
+      if (childContents.length === 0) continue;
+      if (nested.length > 0 && gap > 0) nested.push({ type: 'spacer', height: gap });
+      nested.push(...childContents);
     }
     return nested;
   }
 
   return [];
+}
+
+/** Auto-layout item spacing (gap between children), or 0 when not auto-layout. */
+function layoutGap(node: SceneNode): number {
+  if ('layoutMode' in node && node.layoutMode !== 'NONE' && typeof node.itemSpacing === 'number') {
+    return Math.max(0, Math.round(node.itemSpacing));
+  }
+  return 0;
 }
 
 function firstText(node: SceneNode): string | undefined {
@@ -187,44 +210,91 @@ function isHorizontal(node: SceneNode): boolean {
 
 // --- top-level document builder --------------------------------------------
 
+function visibleChildren(node: SceneNode): SceneNode[] {
+  if (!('children' in node)) return [];
+  return node.children.filter((c) => c.visible !== false && !('opacity' in c && c.opacity === 0));
+}
+
+function isRow(node: SceneNode): boolean {
+  return isHorizontal(node) && !isFlattenableGraphic(node) && visibleChildren(node).length > 1;
+}
+
+function isLeaf(node: SceneNode): boolean {
+  return node.type === 'TEXT' || looksLikeButton(node) || hasImageFill(node) || isFlattenableGraphic(node);
+}
+
+/** A container that holds a horizontal row somewhere below, so it must be split into sections. */
+function containsRow(node: SceneNode): boolean {
+  if (isLeaf(node)) return false;
+  if (isRow(node)) return true;
+  return visibleChildren(node).some(containsRow);
+}
+
+function singleColumnSection(contents: Content[], style: BoxStyle = {}): Section {
+  return { type: 'section', style, columns: [{ type: 'column', style: {}, contents }] };
+}
+
+function spacerSection(height: number): Section {
+  return singleColumnSection([{ type: 'spacer', height }]);
+}
+
+async function rowSection(row: SceneNode): Promise<Section> {
+  const columns: Column[] = [];
+  for (const child of visibleChildren(row)) {
+    columns.push({ type: 'column', style: boxStyle(child), contents: await collectContents(child) });
+  }
+  return { type: 'section', style: boxStyle(row), columns };
+}
+
 /**
- * Maps a selected Figma frame into an email document.
- *
- * Heuristic (MVP): each direct child of the root becomes one section.
- * A horizontal auto-layout child becomes a multi-column section (one column
- * per grandchild); everything else becomes a single-column section whose
- * column holds the flattened leaf content of that child.
+ * Linearizes a container subtree into a flat list of email sections. Email HTML
+ * cannot nest arbitrarily (MJML: body > section > column > content), so the
+ * vertical stack is flattened: leaf clusters become single-column sections,
+ * horizontal rows become multi-column sections, and containers that hold a row
+ * are recursed into. Auto-layout item spacing is preserved as spacer sections.
  */
-export async function buildDocument(root: SceneNode): Promise<EmailDocument> {
-  imageCounter = 0;
-  const sections: Section[] = [];
+async function buildSections(container: SceneNode): Promise<Section[]> {
+  const out: Section[] = [];
+  const gap = layoutGap(container);
+  let buffer: Content[] = [];
 
-  const children = 'children' in root ? root.children : [];
-  for (const child of children) {
-    if (child.visible === false) continue;
+  const pushGap = () => {
+    if (gap > 0 && out.length > 0) out.push(spacerSection(gap));
+  };
+  const flush = () => {
+    if (buffer.length > 0) {
+      pushGap();
+      out.push(singleColumnSection(buffer));
+      buffer = [];
+    }
+  };
 
-    if (isHorizontal(child) && 'children' in child) {
-      const columns: Column[] = [];
-      for (const grandchild of child.children) {
-        columns.push({
-          type: 'column',
-          style: boxStyle(grandchild),
-          contents: await collectContents(grandchild),
-        });
-      }
-      sections.push({ type: 'section', style: boxStyle(child), columns });
+  for (const child of visibleChildren(container)) {
+    if (isRow(child)) {
+      flush();
+      pushGap();
+      out.push(await rowSection(child));
+    } else if (containsRow(child)) {
+      flush();
+      pushGap();
+      out.push(...(await buildSections(child)));
     } else {
-      sections.push({
-        type: 'section',
-        style: boxStyle(child),
-        columns: [{ type: 'column', style: {}, contents: await collectContents(child) }],
-      });
+      const contents = await collectContents(child);
+      if (contents.length === 0) continue;
+      if (buffer.length > 0 && gap > 0) buffer.push({ type: 'spacer', height: gap });
+      buffer.push(...contents);
     }
   }
+  flush();
+  return out;
+}
 
+/** Maps a selected Figma frame into an email document. */
+export async function buildDocument(root: SceneNode): Promise<EmailDocument> {
+  imageCounter = 0;
   return {
     width: Math.round(root.width),
     backgroundColor: solidFill('fills' in root ? root.fills : undefined),
-    sections,
+    sections: await buildSections(root),
   };
 }

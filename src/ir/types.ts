@@ -23,9 +23,18 @@ export interface BoxStyle {
   borderRadius?: number;
 }
 
+/** A styled run within a text node — preserves inline weight/color changes. */
+export interface TextRun {
+  text: string;
+  fontWeight?: number;
+  color?: string;
+  italic?: boolean;
+}
+
 export interface TextContent {
   type: 'text';
-  text: string;
+  runs: TextRun[];
+  /** Base style for the paragraph (family, size, line-height, align). */
   style: TextStyle;
 }
 

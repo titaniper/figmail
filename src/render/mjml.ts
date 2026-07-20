@@ -7,6 +7,7 @@ import type {
   ImageContent,
   Section,
   TextContent,
+  TextRun,
   TextStyle,
 } from '../ir/types';
 
@@ -78,7 +79,31 @@ function renderHead(doc: EmailDocument): string {
       return `<mj-font name="${family}" href="${href}" />`;
     })
     .join('\n    ');
-  return fonts ? `<mj-head>\n    ${fonts}\n  </mj-head>` : '';
+
+  // MJML applies generous default paddings (section 20px, text/image 10px 25px).
+  // Those inflate the layout; the design's real spacing comes from Figma
+  // auto-layout instead, so we zero the defaults here.
+  const attributes = [
+    '<mj-attributes>',
+    '  <mj-all padding="0" font-family="Helvetica, Arial, sans-serif" />',
+    '  <mj-text padding="0" line-height="1.4" />',
+    '  <mj-section padding="0" />',
+    '  <mj-column padding="0" />',
+    '  <mj-image padding="0" />',
+    '  <mj-button padding="0" />',
+    '</mj-attributes>',
+  ].join('\n    ');
+
+  return `<mj-head>\n    ${attributes}\n    ${fonts}\n  </mj-head>`;
+}
+
+function renderRun(run: TextRun, base: TextStyle): string {
+  const declarations: string[] = [];
+  if (run.fontWeight && run.fontWeight !== 400) declarations.push(`font-weight:${run.fontWeight}`);
+  if (run.italic) declarations.push('font-style:italic');
+  if (run.color && run.color !== base.color) declarations.push(`color:${run.color}`);
+  const text = esc(run.text).replace(/\n/g, '<br/>');
+  return declarations.length ? `<span style="${declarations.join(';')}">${text}</span>` : text;
 }
 
 function renderText(content: TextContent): string {
@@ -87,12 +112,12 @@ function renderText(content: TextContent): string {
     color: s.color,
     'font-family': fontStack(s.fontFamily),
     'font-size': px(s.fontSize),
-    'font-weight': s.fontWeight ? String(s.fontWeight) : undefined,
     'line-height': px(s.lineHeight),
     'letter-spacing': s.letterSpacing ? `${s.letterSpacing}px` : undefined,
     align: s.align,
   });
-  return `<mj-text ${a}>${esc(content.text).replace(/\n/g, '<br/>')}</mj-text>`;
+  const inner = content.runs.map((run) => renderRun(run, s)).join('');
+  return `<mj-text ${a}>${inner}</mj-text>`;
 }
 
 function renderImage(content: ImageContent): string {
