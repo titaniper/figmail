@@ -199,9 +199,13 @@ function opts(): RenderOptions {
   return { variables: mode === 'text' && variablesMode, values: valuesMap() };
 }
 
-function renderWith(doc: EmailDocument, resolveSrc: (image: ImageContent) => string, forceDark = false): string {
+function renderWith(
+  doc: EmailDocument,
+  resolveSrc: (image: ImageContent) => string,
+  override: Partial<RenderOptions> = {},
+): string {
   for (const image of collectImages(doc)) image.src = resolveSrc(image);
-  const { html, errors } = mjml2html(renderMjml(doc, { ...opts(), forceDark }), { validationLevel: 'soft' });
+  const { html, errors } = mjml2html(renderMjml(doc, { ...opts(), ...override }), { validationLevel: 'soft' });
   if (errors.length) console.warn('MJML warnings', errors);
   return html;
 }
@@ -219,14 +223,9 @@ function renderCurrent(): void {
   const doc = activeDoc();
   if (!doc) return;
   // Preview simulates dark by applying overrides inline; the HTML tab/export use a media query.
-  const previewHtml = renderWith(
-    doc,
-    (image) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? '')),
-    darkPreview,
-  );
-  const exportHtml = darkPreview
-    ? renderWith(doc, (image) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? '')), false)
-    : previewHtml;
+  const inline = (image: ImageContent) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? ''));
+  const previewHtml = renderWith(doc, inline, { forceDark: darkPreview });
+  const exportHtml = darkPreview ? renderWith(doc, inline, { forceDark: false }) : previewHtml;
   currentHtml = exportHtml;
   preview.srcdoc = previewHtml;
   source.value = exportHtml;
@@ -601,6 +600,17 @@ tabSource.onclick = () => {
   workarea.classList.add('hidden');
 };
 
+function timestamp(): string {
+  const d = new Date();
+  const p = (x: number) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function currentTemplateName(): string {
+  const t = templates.find((x) => x.id === currentTemplateId);
+  return (t?.name || 'email').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'email';
+}
+
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -619,8 +629,9 @@ async function copyHtml(): Promise<void> {
 async function downloadHtml(): Promise<void> {
   const doc = activeDoc();
   if (!doc) return;
-  const useVars = opts().variables === true;
-  const html = renderWith(doc, (image) => `${IMAGE_DIR}/${image.id}.png`);
+  // The exported .html is the reusable template — bound values become {{ name }}.
+  const useVars = mode === 'text';
+  const html = renderWith(doc, (image) => `${IMAGE_DIR}/${image.id}.png`, { variables: useVars });
 
   const zip = new JSZip();
   const root = zip.folder(EXPORT_DIR)!;
@@ -632,8 +643,9 @@ async function downloadHtml(): Promise<void> {
   const vars = displayVariables().map((v) => ({ name: v.name, type: v.type, sample: v.sample, value: v.value ?? '' }));
   if (vars.length > 0) root.file('variables.json', JSON.stringify(vars, null, 2));
 
-  downloadBlob(await zip.generateAsync({ type: 'blob' }), `${EXPORT_DIR}.zip`);
-  post({ type: 'notify', message: 'Exported figmail-export.zip' });
+  const filename = `${currentTemplateName()}-${timestamp()}.zip`;
+  downloadBlob(await zip.generateAsync({ type: 'blob' }), filename);
+  post({ type: 'notify', message: `Exported ${filename}` });
 }
 
 /** Just the image assets inside the email (icons/photos/logos), not the whole frame. */
@@ -643,7 +655,8 @@ async function downloadImages(): Promise<void> {
   const zip = new JSZip();
   const folder = zip.folder('figmail-images')!;
   for (const image of images) folder.file(`${image.id}.png`, image.bytes as Uint8Array);
-  downloadBlob(await zip.generateAsync({ type: 'blob' }), 'figmail-images.zip');
+  const filename = `${currentTemplateName()}-images-${timestamp()}.zip`;
+  downloadBlob(await zip.generateAsync({ type: 'blob' }), filename);
   post({ type: 'notify', message: `Exported ${images.length} image(s).` });
 }
 

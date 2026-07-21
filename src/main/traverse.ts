@@ -124,6 +124,15 @@ function buildText(node: TextNode): Content[] {
       if (seg.link) linkAt[i] = seg.link;
     }
   }
+  // Auto-detect handlebars typed directly in the Figma text (e.g. "Dear {{ customerName }},").
+  const handlebarsRe = /\{\{\s*([\w.-]+)\s*\}\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = handlebarsRe.exec(chars)) !== null) {
+    for (let i = match.index; i < match.index + match[0].length; i += 1) {
+      if (!varAt[i]) varAt[i] = match[1];
+    }
+  }
+
   // A Figma hyperlink becomes a link run where the user hasn't set one.
   for (let i = 0; i < n; i += 1) if (!linkAt[i] && figLink[i]) linkAt[i] = { href: figLink[i] };
 
@@ -230,9 +239,10 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
 
   if (node.type === 'TEXT') return buildText(node);
 
-  if (looksLikeButton(node)) {
+  const data = readNodeData(node);
+  const hasLinkData = Boolean(data.href) || data.binding?.type === 'url';
+  if (looksLikeButton(node) || hasLinkData) {
     const label = node.type !== 'FRAME' ? node.name : (firstText(node) ?? node.name);
-    const data = readNodeData(node);
     return [
       {
         type: 'button',
