@@ -23,12 +23,22 @@ export interface BoxStyle {
   borderRadius?: number;
 }
 
-/** A styled run within a text node — preserves inline weight/color changes. */
+/** A hyperlink on a run: a static href and/or a URL variable. */
+export interface RunLink {
+  href?: string;
+  var?: string;
+}
+
+/** A styled run within a text node — preserves inline weight/color/variable/link. */
 export interface TextRun {
   text: string;
   fontWeight?: number;
   color?: string;
   italic?: boolean;
+  /** This run is a text variable — rendered as `{{ var }}` / applied value. */
+  var?: string;
+  /** This run is a hyperlink. */
+  link?: RunLink;
 }
 
 /**

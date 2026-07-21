@@ -9,6 +9,7 @@ import type {
   TemplateData,
   TemplateRef,
   TemplateVariable,
+  TextSegment,
   UiToMain,
 } from '../shared/messages';
 import { renderMjml, type RenderOptions } from '../render/mjml';
@@ -135,16 +136,25 @@ interface DisplayVar {
   bound: boolean;
 }
 
-/** Variable names/types/samples inferred from node bindings in the document. */
+/** Variable names/types/samples inferred from bindings and text runs in the document. */
 function boundVariables(doc: EmailDocument | undefined): DisplayVar[] {
   if (!doc) return [];
   const byName = new Map<string, DisplayVar>();
+  const add = (name: string | undefined, type: DisplayVar['type'], sample?: string) => {
+    if (name && !byName.has(name)) byName.set(name, { name, type, sample, bound: true });
+  };
   for (const section of doc.sections)
     for (const column of section.columns)
       for (const content of column.contents) {
-        const binding = 'binding' in content ? content.binding : undefined;
-        if (binding && !byName.has(binding.name)) {
-          byName.set(binding.name, { name: binding.name, type: binding.type, sample: binding.sample, bound: true });
+        if (content.type === 'text') {
+          for (const run of content.runs) {
+            add(run.var, 'text', run.text);
+            add(run.link?.var, 'url', run.link?.href);
+          }
+        } else if (content.type === 'image' && content.binding) {
+          add(content.binding.name, 'image', content.binding.sample);
+        } else if (content.type === 'button' && content.binding) {
+          add(content.binding.name, 'url', content.binding.sample);
         }
       }
   return [...byName.values()];
@@ -278,17 +288,102 @@ function renderSelectionPanel(): void {
     return;
   }
   selectionBody.className = '';
+  if (node.kind === 'text') renderTextBinding(node);
+  else renderWholeBinding(node);
+}
+
+/** Text node: highlight a substring in the panel and bind it as a variable or link. */
+function renderTextBinding(node: SelectedNodeInfo): void {
+  const text = node.text ?? '';
+  const segments = node.data.segments ?? [];
+
+  selectionBody.innerHTML = `
+    ${variableNamesDatalist()}
+    <div class="kind-chip">TEXT</div>
+    <div class="field"><label>Highlight part of the text below, then bind it</label>
+      <div id="text-sel" class="textsel">${esc(text)}</div></div>
+    <div id="sel-info" class="muted" style="margin-bottom:6px">Nothing highlighted.</div>
+    <div class="field"><input id="seg-var" list="var-names" placeholder="variable name"></div>
+    <div class="row-btns" style="margin-bottom:6px">
+      <button class="bind" id="mk-var">Make variable</button>
+    </div>
+    <div class="field"><input id="seg-href" placeholder="link href (https://...)"></div>
+    <div class="field"><input id="seg-linkvar" list="var-names" placeholder="or URL variable"></div>
+    <div class="row-btns"><button class="bind" id="mk-link">Make link</button></div>
+    <div class="panel-title" style="margin-top:10px">Bound ranges</div>
+    <div id="seg-list"></div>`;
+
+  const textSel = document.getElementById('text-sel') as HTMLDivElement;
+  const selInfo = document.getElementById('sel-info') as HTMLDivElement;
+  const segList = document.getElementById('seg-list') as HTMLDivElement;
+  let pending: { start: number; end: number } | null = null;
+
+  const readSelection = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      pending = null;
+      selInfo.textContent = 'Nothing highlighted.';
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    if (!textSel.contains(range.startContainer) || !textSel.contains(range.endContainer)) return;
+    const start = Math.min(range.startOffset, range.endOffset);
+    const end = Math.max(range.startOffset, range.endOffset);
+    if (end <= start) {
+      pending = null;
+      return;
+    }
+    pending = { start, end };
+    selInfo.textContent = `Selected: “${text.slice(start, end)}”`;
+  };
+  textSel.onmouseup = readSelection;
+  textSel.onkeyup = readSelection;
+
+  const applySegment = (seg: TextSegment) => {
+    sendBind({ segments: [...segments, seg] });
+  };
+
+  (document.getElementById('mk-var') as HTMLButtonElement).onclick = () => {
+    const name = (document.getElementById('seg-var') as HTMLInputElement).value.trim();
+    if (!pending) return post({ type: 'notify', message: 'Highlight text first.' });
+    if (!name) return post({ type: 'notify', message: 'Enter a variable name.' });
+    applySegment({ start: pending.start, end: pending.end, var: name });
+  };
+  (document.getElementById('mk-link') as HTMLButtonElement).onclick = () => {
+    const href = (document.getElementById('seg-href') as HTMLInputElement).value.trim() || undefined;
+    const linkVar = (document.getElementById('seg-linkvar') as HTMLInputElement).value.trim() || undefined;
+    if (!pending) return post({ type: 'notify', message: 'Highlight text first.' });
+    if (!href && !linkVar) return post({ type: 'notify', message: 'Enter a href or URL variable.' });
+    applySegment({ start: pending.start, end: pending.end, link: { href, var: linkVar } });
+  };
+
+  if (segments.length === 0) {
+    segList.className = 'muted';
+    segList.textContent = 'None yet.';
+  } else {
+    segList.className = '';
+    segList.innerHTML = segments
+      .map((s, idx) => {
+        const label = s.var ? `{{ ${esc(s.var)} }}` : `link${s.link?.var ? ` → {{ ${esc(s.link.var)} }}` : ''}`;
+        return `<div class="var-item"><button class="seg-del" data-idx="${idx}">remove</button>
+          <div><code>${label}</code> <span class="meta">“${esc(text.slice(s.start, s.end))}”</span></div></div>`;
+      })
+      .join('');
+    segList.querySelectorAll<HTMLButtonElement>('.seg-del').forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.idx);
+        sendBind({ segments: segments.filter((_, i) => i !== idx) });
+      };
+    });
+  }
+}
+
+/** Button / image node: bind the whole node's link or image src to a variable. */
+function renderWholeBinding(node: SelectedNodeInfo): void {
   const b = node.data.binding;
   const list = variableNamesDatalist();
 
-  if (node.kind === 'text') {
-    selectionBody.innerHTML = `
-      ${list}
-      <div class="kind-chip">TEXT</div>
-      <div class="field"><label>Sample (mockup)</label><input id="b-sample" value="${esc(node.text ?? '')}" readonly></div>
-      <div class="field"><label>Variable name</label><input id="b-name" list="var-names" placeholder="e.g. customerName" value="${esc(b?.name ?? '')}"></div>
-      <div class="row-btns"><button class="bind" id="b-bind">Bind</button><button class="unbind" id="b-unbind">Unbind</button></div>`;
-  } else if (node.kind === 'button') {
+  if (node.kind === 'button') {
     selectionBody.innerHTML = `
       ${list}
       <div class="kind-chip">BUTTON / LINK</div>
@@ -309,10 +404,7 @@ function renderSelectionPanel(): void {
   (document.getElementById('b-bind') as HTMLButtonElement).onclick = () => {
     const name = nameInput?.value.trim() ?? '';
     const href = hrefInput?.value.trim() || undefined;
-    if (node.kind === 'text') {
-      if (!name) return post({ type: 'notify', message: 'Enter a variable name.' });
-      sendBind({ binding: { name, type: 'text', sample: node.text } });
-    } else if (node.kind === 'button') {
+    if (node.kind === 'button') {
       sendBind({ href, binding: name ? { name, type: 'url', sample: href } : undefined });
     } else {
       if (!name) return post({ type: 'notify', message: 'Enter a variable name.' });

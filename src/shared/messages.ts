@@ -10,9 +10,20 @@ export interface FrameImage {
   height: number;
 }
 
+/** A bound character range inside a text node (partial variable / inline link). */
+export interface TextSegment {
+  start: number;
+  end: number;
+  var?: string;
+  link?: { href?: string; var?: string };
+}
+
 /** What Figmail persists on a node (via setPluginData) for the Text-mode template. */
 export interface NodeData {
+  /** Whole-node binding for button / image nodes. */
   binding?: Binding;
+  /** Partial variable/link ranges for text nodes. */
+  segments?: TextSegment[];
   /** Static link for a button/link node (used when no url binding). */
   href?: string;
 }

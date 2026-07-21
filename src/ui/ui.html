@@ -58,6 +58,13 @@
   .newvar select { padding: 6px; }
   .newvar button { padding: 6px 10px; border: none; border-radius: 6px; background: #3d4cff; color: #fff; font-weight: 600; cursor: pointer; }
   .var-del { border: none; background: transparent; color: #b00020; cursor: pointer; font-size: 11px; float: right; }
+  .seg-del { border: none; background: transparent; color: #b00020; cursor: pointer; font-size: 11px; float: right; }
+  .textsel {
+    border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; font-size: 12px;
+    line-height: 1.5; white-space: pre-wrap; word-break: break-word; user-select: text;
+    background: #fff; max-height: 140px; overflow: auto;
+  }
+  .textsel::selection { background: #c7ccff; }
 
   main { flex: 1; overflow: hidden; position: relative; }
   #workarea { display: flex; height: 100%; }

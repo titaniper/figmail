@@ -97,13 +97,28 @@ function renderHead(doc: EmailDocument): string {
   return `<mj-head>\n    ${attributes}\n    ${fonts}\n  </mj-head>`;
 }
 
-function renderRun(run: TextRun, base: TextStyle): string {
+function renderRun(run: TextRun, base: TextStyle, opts: RenderOptions): string {
+  let content: string;
+  if (run.var) {
+    content = opts.variables ? handlebars(run.var) : esc(appliedValue(run.var, opts) ?? run.text);
+  } else {
+    content = esc(run.text).replace(/\n/g, '<br/>');
+  }
+
   const declarations: string[] = [];
   if (run.fontWeight && run.fontWeight !== 400) declarations.push(`font-weight:${run.fontWeight}`);
   if (run.italic) declarations.push('font-style:italic');
   if (run.color && run.color !== base.color) declarations.push(`color:${run.color}`);
-  const text = esc(run.text).replace(/\n/g, '<br/>');
-  return declarations.length ? `<span style="${declarations.join(';')}">${text}</span>` : text;
+  let html = declarations.length ? `<span style="${declarations.join(';')}">${content}</span>` : content;
+
+  if (run.link) {
+    const href =
+      opts.variables && run.link.var
+        ? handlebars(run.link.var)
+        : ((run.link.var && appliedValue(run.link.var, opts)) ?? run.link.href ?? '#');
+    html = `<a href="${href}" style="color:inherit;text-decoration:underline">${html}</a>`;
+  }
+  return html;
 }
 
 /**
@@ -136,13 +151,7 @@ function renderText(content: TextContent, opts: RenderOptions): string {
     'letter-spacing': s.letterSpacing ? `${s.letterSpacing}px` : undefined,
     align: s.align,
   });
-  let inner: string;
-  if (opts.variables && content.binding) {
-    inner = handlebars(content.binding.name);
-  } else {
-    const value = content.binding && appliedValue(content.binding.name, opts);
-    inner = value !== undefined ? esc(value) : content.runs.map((run) => renderRun(run, s)).join('');
-  }
+  const inner = content.runs.map((run) => renderRun(run, s, opts)).join('');
   return `<mj-text ${a}>${inner}</mj-text>`;
 }
 

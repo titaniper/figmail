@@ -1,4 +1,4 @@
-import type { BoxStyle, Column, Content, EmailDocument, Section, TextRun, TextStyle } from '../ir/types';
+import type { BoxStyle, Column, Content, EmailDocument, RunLink, Section, TextRun, TextStyle } from '../ir/types';
 import type { NodeData, TemplateData } from '../shared/messages';
 
 export const PLUGIN_DATA_KEY = 'figmail';
@@ -87,26 +87,67 @@ function textAlign(node: TextNode): TextStyle['align'] {
 }
 
 /**
- * Builds a text content node, splitting the string into styled runs so inline
- * weight/color changes (partial bold, colored spans) survive. The base style
- * carries paragraph-level properties (family, size, line-height, align).
+ * Builds a text content node. Runs are split at boundaries of style
+ * (font/color), user-bound variable/link ranges, and Figma inline hyperlinks —
+ * so partial bold, partial variables, and inline links all survive.
  */
 function buildText(node: TextNode): Content[] {
-  if (node.characters.trim().length === 0) return [];
+  const chars = node.characters;
+  if (chars.trim().length === 0) return [];
+  const n = chars.length;
 
-  const segments = node.getStyledTextSegments(['fontName', 'fills']);
-  const runs: TextRun[] = segments
-    .filter((seg) => seg.characters.length > 0)
-    .map((seg) => ({
-      text: seg.characters,
-      fontWeight: fontWeight(seg.fontName.style),
-      italic: /italic/i.test(seg.fontName.style),
-      color: solidFill(seg.fills),
-    }));
+  // Per-character style + Figma hyperlink from styled segments.
+  const weight: number[] = new Array(n).fill(400);
+  const italic: boolean[] = new Array(n).fill(false);
+  const color: (string | undefined)[] = new Array(n).fill(undefined);
+  const figLink: (string | undefined)[] = new Array(n).fill(undefined);
+  const styleSegs = node.getStyledTextSegments(['fontName', 'fills', 'hyperlink']);
+  for (const seg of styleSegs) {
+    const w = fontWeight(seg.fontName.style);
+    const it = /italic/i.test(seg.fontName.style);
+    const c = solidFill(seg.fills);
+    const link = seg.hyperlink && seg.hyperlink.type === 'URL' ? seg.hyperlink.value : undefined;
+    for (let i = seg.start; i < seg.end; i += 1) {
+      weight[i] = w;
+      italic[i] = it;
+      color[i] = c;
+      figLink[i] = link;
+    }
+  }
+
+  // Per-character user variable / link ranges.
+  const varAt: (string | undefined)[] = new Array(n).fill(undefined);
+  const linkAt: (RunLink | undefined)[] = new Array(n).fill(undefined);
+  for (const seg of readNodeData(node).segments ?? []) {
+    for (let i = Math.max(0, seg.start); i < Math.min(seg.end, n); i += 1) {
+      if (seg.var) varAt[i] = seg.var;
+      if (seg.link) linkAt[i] = seg.link;
+    }
+  }
+  // A Figma hyperlink becomes a link run where the user hasn't set one.
+  for (let i = 0; i < n; i += 1) if (!linkAt[i] && figLink[i]) linkAt[i] = { href: figLink[i] };
+
+  const key = (i: number) =>
+    `${weight[i]}|${italic[i]}|${color[i] ?? ''}|${varAt[i] ?? ''}|${JSON.stringify(linkAt[i] ?? null)}`;
+
+  const runs: TextRun[] = [];
+  let i = 0;
+  while (i < n) {
+    let j = i + 1;
+    while (j < n && key(j) === key(i)) j += 1;
+    const run: TextRun = { text: chars.slice(i, j) };
+    if (weight[i] !== 400) run.fontWeight = weight[i];
+    if (italic[i]) run.italic = true;
+    if (color[i]) run.color = color[i];
+    if (varAt[i]) run.var = varAt[i];
+    if (linkAt[i]) run.link = linkAt[i];
+    runs.push(run);
+    i = j;
+  }
 
   const style: TextStyle = {
-    fontFamily: segments[0]?.fontName.family,
-    color: solidFill(node.fills) ?? runs[0]?.color,
+    fontFamily: styleSegs[0]?.fontName.family,
+    color: solidFill(node.fills) ?? color[0],
     align: textAlign(node),
   };
   if (typeof node.fontSize === 'number') style.fontSize = node.fontSize;
@@ -117,8 +158,7 @@ function buildText(node: TextNode): Content[] {
     style.lineHeight = node.lineHeight.value;
   }
 
-  const binding = readNodeData(node).binding;
-  return [{ type: 'text', runs, style, binding }];
+  return [{ type: 'text', runs, style }];
 }
 
 // --- content extraction ----------------------------------------------------
