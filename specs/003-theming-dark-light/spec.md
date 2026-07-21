@@ -1,6 +1,6 @@
 # 003 · 테마 (다크/라이트)
 
-> 상태: 제안(Proposed).
+> 상태: MVP (Text 모드). Image 모드 다크 프레임 스왑은 추후.
 
 ## 배경 / 목적
 
@@ -17,13 +17,22 @@
 - Image 모드: 텍스트가 픽셀이므로 자동 반전 불가 → **라이트용/다크용 프레임을
   각각 지정**해 두 이미지를 조건부로 노출(`prefers-color-scheme`)한다.
 
-## 요구사항 (초안)
+## 요구사항
 
-- **R1** 미리보기 Light/Dark 토글을 제공한다(클라이언트 프리뷰와 결합).
-- **R2** Text 모드에서 다크 오버라이드 CSS를 emit한다(배경/전경 색 매핑).
-- **R3** Image 모드에서 라이트/다크 프레임을 각각 지정하면 두 PNG를
-  `prefers-color-scheme`로 스왑한다. 다크 프레임 미지정 시 라이트만 사용.
-- **R4** 다크 색 매핑은 자동(명도 반전 규칙) + 사용자 오버라이드를 허용한다.
+- **R1** 미리보기 Light/Dark 토글을 제공한다(클라이언트 크롬 + 본문 모두 반영).
+- **R2** export HTML에 `color-scheme`/`supported-color-schemes` 메타 + `@media
+(prefers-color-scheme: dark)` 오버라이드를 emit한다(배경 `#16181c`/서피스
+  `#1f2226`/전경 `#e6e8eb`). 클라이언트가 다크일 때 자동 적용.
+- **R3** 프리뷰 Dark는 고정 스킴 iframe에서도 보이도록 동일 규칙을 **무조건
+  적용(forceDark)** 해 시뮬레이션한다. HTML 탭/export는 media query 버전.
+- **R4** (추후) 다크 색 사용자 오버라이드, Image 모드 라이트/다크 프레임 스왑.
+
+## 구현 메모
+
+- `mj-text`에 `fm-text`, `mj-section`에 `fm-section`, `mj-body`에 `fm-body`
+  클래스를 부여하고, 다크 규칙이 이 클래스를 `!important`로 덮는다.
+- 현재 다크 팔레트는 고정(블랙 배경 + 라이트 텍스트). 링크/버튼 등 액센트 색은
+  유지된다.
 
 ## 열린 결정
 

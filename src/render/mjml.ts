@@ -72,7 +72,14 @@ function collectFonts(doc: EmailDocument): string[] {
  * simply 404 harmlessly and fall through to the fallback stack, so this is
  * safe to emit unconditionally.
  */
-function renderHead(doc: EmailDocument): string {
+// Dark-mode overrides. Emitted inside a prefers-color-scheme media query for
+// export (clients apply it), or unconditionally when `forceDark` previews it.
+const DARK_RULES =
+  'body,.fm-body{background:#16181c !important}' +
+  '.fm-section{background:#1f2226 !important}' +
+  '.fm-text,.fm-text *{color:#e6e8eb !important}';
+
+function renderHead(doc: EmailDocument, opts: RenderOptions): string {
   const fonts = collectFonts(doc)
     .map((family) => {
       const href = `https://fonts.googleapis.com/css?family=${family.replace(/ /g, '+')}`;
@@ -94,7 +101,13 @@ function renderHead(doc: EmailDocument): string {
     '</mj-attributes>',
   ].join('\n    ');
 
-  return `<mj-head>\n    ${attributes}\n    ${fonts}\n  </mj-head>`;
+  const colorScheme =
+    '<mj-raw><meta name="color-scheme" content="light dark" /><meta name="supported-color-schemes" content="light dark" /></mj-raw>';
+  const dark = opts.forceDark
+    ? `<mj-style>${DARK_RULES}</mj-style>`
+    : `<mj-style>@media (prefers-color-scheme: dark){${DARK_RULES}}</mj-style>`;
+
+  return `<mj-head>\n    ${attributes}\n    ${colorScheme}\n    ${dark}\n    ${fonts}\n  </mj-head>`;
 }
 
 function renderRun(run: TextRun, base: TextStyle, opts: RenderOptions): string {
@@ -129,6 +142,8 @@ function renderRun(run: TextRun, base: TextStyle, opts: RenderOptions): string {
 export interface RenderOptions {
   variables?: boolean;
   values?: Record<string, string>;
+  /** Preview-only: apply the dark overrides unconditionally (export uses a media query). */
+  forceDark?: boolean;
 }
 
 function handlebars(name: string): string {
@@ -150,6 +165,7 @@ function renderText(content: TextContent, opts: RenderOptions): string {
     'line-height': px(s.lineHeight),
     'letter-spacing': s.letterSpacing ? `${s.letterSpacing}px` : undefined,
     align: s.align,
+    'css-class': 'fm-text',
   });
   const inner = content.runs.map((run) => renderRun(run, s, opts)).join('');
   return `<mj-text ${a}>${inner}</mj-text>`;
@@ -211,17 +227,19 @@ function renderSection(section: Section, opts: RenderOptions): string {
   const a = attrs({
     'background-color': section.style.backgroundColor,
     padding: padding(section.style) ?? '0',
+    'css-class': 'fm-section',
   });
   const columns = section.columns.map((c) => renderColumn(c, opts)).join('\n    ');
   return `<mj-section ${a}>\n    ${columns}\n  </mj-section>`;
 }
 
 export function renderMjml(doc: EmailDocument, opts: RenderOptions = {}): string {
-  const head = renderHead(doc);
+  const head = renderHead(doc, opts);
   const sections = doc.sections.map((s) => renderSection(s, opts)).join('\n  ');
+  const body = attrs({ 'background-color': doc.backgroundColor, width: px(doc.width), 'css-class': 'fm-body' });
   return `<mjml>
   ${head}
-  <mj-body ${attrs({ 'background-color': doc.backgroundColor, width: px(doc.width) })}>
+  <mj-body ${body}>
   ${sections}
   </mj-body>
 </mjml>`;

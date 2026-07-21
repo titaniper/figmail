@@ -65,6 +65,7 @@ let templates: TemplateRef[] = [];
 let currentTemplateId: string | null = null;
 let candidate: TemplateRef | null = null;
 let hasDocument = false;
+let darkPreview = false;
 let currentHtml = '';
 
 function post(message: UiToMain) {
@@ -198,9 +199,9 @@ function opts(): RenderOptions {
   return { variables: mode === 'text' && variablesMode, values: valuesMap() };
 }
 
-function renderWith(doc: EmailDocument, resolveSrc: (image: ImageContent) => string): string {
+function renderWith(doc: EmailDocument, resolveSrc: (image: ImageContent) => string, forceDark = false): string {
   for (const image of collectImages(doc)) image.src = resolveSrc(image);
-  const { html, errors } = mjml2html(renderMjml(doc, opts()), { validationLevel: 'soft' });
+  const { html, errors } = mjml2html(renderMjml(doc, { ...opts(), forceDark }), { validationLevel: 'soft' });
   if (errors.length) console.warn('MJML warnings', errors);
   return html;
 }
@@ -217,9 +218,18 @@ function sizePreview(): void {
 function renderCurrent(): void {
   const doc = activeDoc();
   if (!doc) return;
-  currentHtml = renderWith(doc, (image) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? '')));
-  preview.srcdoc = currentHtml;
-  source.value = currentHtml;
+  // Preview simulates dark by applying overrides inline; the HTML tab/export use a media query.
+  const previewHtml = renderWith(
+    doc,
+    (image) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? '')),
+    darkPreview,
+  );
+  const exportHtml = darkPreview
+    ? renderWith(doc, (image) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? '')), false)
+    : previewHtml;
+  currentHtml = exportHtml;
+  preview.srcdoc = previewHtml;
+  source.value = exportHtml;
   clearError();
 }
 
@@ -535,9 +545,11 @@ varMockup.onclick = () => setVarMode(false);
 varVars.onclick = () => setVarMode(true);
 
 function setTheme(dark: boolean): void {
+  darkPreview = dark;
   clientView.classList.toggle('dark', dark);
   themeDark.classList.toggle('active', dark);
   themeLight.classList.toggle('active', !dark);
+  renderCurrent();
 }
 themeLight.onclick = () => setTheme(false);
 themeDark.onclick = () => setTheme(true);
