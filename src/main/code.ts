@@ -43,6 +43,17 @@ function postIdle() {
   post({ type: 'idle', candidate: candidateFromSelection() });
 }
 
+/** If the current selection is (or sits inside) a saved template, return its id. */
+function matchingTemplateId(): string | null {
+  const ids = new Set(readRegistry().map((t) => t.id));
+  let node: BaseNode | null = figma.currentPage.selection[0] ?? null;
+  while (node) {
+    if (ids.has(node.id)) return node.id;
+    node = node.parent;
+  }
+  return null;
+}
+
 function nodeKind(node: SceneNode): SelectedNodeInfo['kind'] {
   if (node.type === 'TEXT') return 'text';
   if (/button|btn|cta/i.test(node.name)) return 'button';
@@ -160,10 +171,14 @@ async function captureById(id: string) {
 figma.ui.onmessage = async (message: UiToMain) => {
   switch (message.type) {
     case 'ready': {
-      // Don't auto-capture — let the user choose in the onboarding screen.
-      postTemplates();
+      // If the selection is already a saved template, open it; otherwise onboard.
+      const match = matchingTemplateId();
+      if (match) await captureById(match);
+      else {
+        postTemplates();
+        postIdle();
+      }
       reflectSelection();
-      postIdle();
       break;
     }
     case 'capture': {
@@ -217,6 +232,11 @@ figma.ui.onmessage = async (message: UiToMain) => {
 };
 
 figma.on('selectionchange', () => {
+  // While idle, selecting a saved frame opens it directly; otherwise refresh onboarding.
+  if (!rootId) {
+    const match = matchingTemplateId();
+    if (match) void captureById(match);
+    else postIdle();
+  }
   reflectSelection();
-  if (!rootId) postIdle(); // keep the onboarding candidate fresh until a template is active
 });
