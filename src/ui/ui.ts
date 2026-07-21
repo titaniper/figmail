@@ -66,7 +66,6 @@ let currentTemplateId: string | null = null;
 let candidate: TemplateRef | null = null;
 let hasDocument = false;
 let darkPreview = false;
-let currentHtml = '';
 
 function post(message: UiToMain) {
   parent.postMessage({ pluginMessage: message }, '*');
@@ -226,7 +225,6 @@ function renderCurrent(): void {
   const inline = (image: ImageContent) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? ''));
   const previewHtml = renderWith(doc, inline, { forceDark: darkPreview });
   const exportHtml = darkPreview ? renderWith(doc, inline, { forceDark: false }) : previewHtml;
-  currentHtml = exportHtml;
   preview.srcdoc = previewHtml;
   source.value = exportHtml;
   clearError();
@@ -620,30 +618,50 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+const inlineResolver = (image: ImageContent) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? ''));
+
+// HTML exports always use the semantic Text document — never the whole-frame
+// image. (The Exact/Text toggle only controls the preview.)
+
 async function copyHtml(): Promise<void> {
-  if (!currentHtml) return;
-  await navigator.clipboard.writeText(currentHtml);
+  if (!textDoc) return;
+  const html = renderWith(textDoc, inlineResolver, { variables: variablesMode, forceDark: darkPreview });
+  await navigator.clipboard.writeText(html);
   post({ type: 'notify', message: 'HTML copied' });
 }
 
 async function downloadHtml(): Promise<void> {
-  const doc = activeDoc();
-  if (!doc) return;
+  if (!textDoc) return;
   // The exported .html is the reusable template — bound values become {{ name }}.
-  const useVars = mode === 'text';
-  const html = renderWith(doc, (image) => `${IMAGE_DIR}/${image.id}.png`, { variables: useVars });
+  const html = renderWith(textDoc, (image) => `${IMAGE_DIR}/${image.id}.png`, { variables: true });
 
   const zip = new JSZip();
   const root = zip.folder(EXPORT_DIR)!;
   root.file('email.html', html);
   const imageFolder = root.folder(IMAGE_DIR)!;
-  for (const image of collectImages(doc)) {
-    if (image.bytes && !(useVars && image.binding)) imageFolder.file(`${image.id}.png`, image.bytes);
+  for (const image of collectImages(textDoc)) {
+    if (image.bytes && !image.binding) imageFolder.file(`${image.id}.png`, image.bytes);
   }
   const vars = displayVariables().map((v) => ({ name: v.name, type: v.type, sample: v.sample, value: v.value ?? '' }));
   if (vars.length > 0) root.file('variables.json', JSON.stringify(vars, null, 2));
 
   const filename = `${currentTemplateName()}-${timestamp()}.zip`;
+  downloadBlob(await zip.generateAsync({ type: 'blob' }), filename);
+  post({ type: 'notify', message: `Exported ${filename}` });
+}
+
+/** The pixel-exact whole-frame image wrapped in a minimal email. */
+async function downloadImageEmail(): Promise<void> {
+  if (!imageDoc) return;
+  const html = renderWith(imageDoc, (image) => `${IMAGE_DIR}/${image.id}.png`);
+  const zip = new JSZip();
+  const root = zip.folder(EXPORT_DIR)!;
+  root.file('email.html', html);
+  const imageFolder = root.folder(IMAGE_DIR)!;
+  for (const image of collectImages(imageDoc)) {
+    if (image.bytes) imageFolder.file(`${image.id}.png`, image.bytes);
+  }
+  const filename = `${currentTemplateName()}-image-${timestamp()}.zip`;
   downloadBlob(await zip.generateAsync({ type: 'blob' }), filename);
   post({ type: 'notify', message: `Exported ${filename}` });
 }
@@ -675,6 +693,9 @@ exportList.querySelectorAll<HTMLButtonElement>('button[data-act]').forEach((btn)
         break;
       case 'html':
         void downloadHtml();
+        break;
+      case 'imageEmail':
+        void downloadImageEmail();
         break;
       case 'images':
         void downloadImages();

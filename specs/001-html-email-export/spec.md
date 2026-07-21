@@ -33,11 +33,14 @@ Figma로 디자인한 이메일을 손으로 `<table>`/inline-CSS HTML로 옮기
 
 하단 버튼 대신 상단 우측 `Export ▾` 하나로 모은다:
 
-- **Copy HTML** — 현재 렌더 HTML을 클립보드로.
+- **모든 HTML export는 Text(시맨틱) 문서 기준** — Exact/Text 토글은 프리뷰만 바꾸고,
+  HTML은 항상 진짜 텍스트로 나온다(프레임 통이미지 아님).
+- **Copy HTML** — 현재 프리뷰(Mockup/Variables·라이트/다크) HTML을 클립보드로.
 - **Download HTML template (.zip)** — `email.html`(바인딩은 `{{ name }}` 템플릿) +
   `images/` (+ `variables.json`). 파일명은 `<템플릿이름>-<YYYYMMDD-HHmm>.zip`.
+- **Download as single image (.zip)** — 프레임 전체를 한 장 PNG로 감싼 이메일
+  (픽셀 그대로가 필요할 때, 별도 액션으로 분리).
 - **Download images only (.zip)** — 이메일 안의 **이미지 에셋만** (`figmail-images/`).
-  프레임 전체를 한 장으로 뽑던 것과 구분된다.
 - **Create filled copy in Figma** — 캡처한 프레임을 원본 옆에 clone하고, 변수의
   적용값을 텍스트 노드에 써넣어 **값이 채워진 결과를 Figma에서 바로 확인**한다.
   (텍스트 값 치환 위주; 링크/이미지 URL 반영은 추후.)
