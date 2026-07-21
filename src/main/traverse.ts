@@ -91,10 +91,23 @@ function fontWeight(style: string): number {
   return 400;
 }
 
-function textAlign(node: TextNode): TextStyle['align'] {
+type Align = NonNullable<TextStyle['align']>;
+
+/** A text node's own alignment, or the alignment inherited from its container. */
+function resolveTextAlign(node: TextNode, inherited: Align): Align {
   if (node.textAlignHorizontal === 'CENTER') return 'center';
   if (node.textAlignHorizontal === 'RIGHT') return 'right';
-  return 'left';
+  return inherited;
+}
+
+/** Horizontal alignment an auto-layout container imposes on its children. */
+function containerAlign(node: SceneNode, inherited: Align): Align {
+  if (!('layoutMode' in node) || node.layoutMode === 'NONE') return inherited;
+  const axis = node.layoutMode === 'VERTICAL' ? node.counterAxisAlignItems : node.primaryAxisAlignItems;
+  if (axis === 'CENTER') return 'center';
+  if (axis === 'MAX') return 'right';
+  if (axis === 'MIN') return 'left';
+  return inherited;
 }
 
 /**
@@ -102,7 +115,7 @@ function textAlign(node: TextNode): TextStyle['align'] {
  * (font/color), user-bound variable/link ranges, and Figma inline hyperlinks —
  * so partial bold, partial variables, and inline links all survive.
  */
-function buildText(node: TextNode): Content[] {
+function buildText(node: TextNode, inheritedAlign: Align): Content[] {
   const chars = node.characters;
   if (chars.trim().length === 0) return [];
   const n = chars.length;
@@ -172,7 +185,7 @@ function buildText(node: TextNode): Content[] {
   const style: TextStyle = {
     fontFamily: styleSegs[0]?.fontName.family,
     color: solidFill(node.fills) ?? color[0],
-    align: textAlign(node),
+    align: resolveTextAlign(node, inheritedAlign),
   };
   if (typeof node.fontSize === 'number') style.fontSize = node.fontSize;
   if (typeof node.letterSpacing !== 'symbol' && node.letterSpacing.unit === 'PIXELS') {
@@ -261,10 +274,10 @@ async function toImage(node: SceneNode): Promise<Content | null> {
 }
 
 /** Collects leaf-level content (text / images / buttons) from a node subtree, in order. */
-async function collectContents(node: SceneNode): Promise<Content[]> {
+async function collectContents(node: SceneNode, inheritedAlign: Align = 'left'): Promise<Content[]> {
   if (node.visible === false || ('opacity' in node && node.opacity === 0)) return [];
 
-  if (node.type === 'TEXT') return buildText(node);
+  if (node.type === 'TEXT') return buildText(node, inheritedAlign);
 
   const data = readNodeData(node);
   const hasLinkData = Boolean(data.href) || data.binding?.type === 'url';
@@ -276,7 +289,7 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
       {
         type: 'button',
         label,
-        style: { ...boxStyle(node), align: 'center' },
+        style: { ...boxStyle(node), align: inheritedAlign },
         href: data.href,
         binding: data.binding,
       },
@@ -294,10 +307,11 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
     if (visible.length === 0) {
       return node.height >= 1 ? [{ type: 'spacer', height: Math.round(node.height) }] : [];
     }
+    const align = containerAlign(node, inheritedAlign);
     const gap = layoutGap(node);
     const nested: Content[] = [];
     for (const child of visible) {
-      const childContents = await collectContents(child);
+      const childContents = await collectContents(child, align);
       if (childContents.length === 0) continue;
       if (nested.length > 0 && gap > 0) nested.push({ type: 'spacer', height: gap });
       nested.push(...childContents);
@@ -379,21 +393,34 @@ function unwrap(node: SceneNode): SceneNode {
 }
 
 async function columnsFrom(row: SceneNode): Promise<Column[]> {
-  const gap = layoutGap(row);
   const children = visibleChildren(row);
-  const columns: Column[] = [];
-  for (let idx = 0; idx < children.length; idx += 1) {
-    const inner = unwrap(children[idx]);
-    const style = { ...boxStyle(inner) };
-    // Approximate the row's horizontal gap as inner padding between columns.
-    if (gap > 0 && children.length > 1) {
-      const half = Math.round(gap / 2);
-      style.paddingLeft = (style.paddingLeft ?? 0) + (idx > 0 ? half : 0);
-      style.paddingRight = (style.paddingRight ?? 0) + (idx < children.length - 1 ? half : 0);
-    }
-    columns.push({ type: 'column', style, contents: await collectContents(inner) });
+  const n = children.length;
+  const content: Column[] = [];
+  for (const child of children) {
+    const inner = unwrap(child);
+    content.push({
+      type: 'column',
+      style: boxStyle(inner),
+      contents: await collectContents(inner, containerAlign(inner, 'left')),
+    });
   }
-  return columns;
+
+  const gap = layoutGap(row);
+  if (gap <= 0 || n <= 1) return content;
+
+  // MJML columns sit flush; insert thin empty spacer columns to create the gap
+  // between (bordered) tiles. Widths are distributed in %.
+  const rowWidth = row.width || 600;
+  const spacerPct = Math.min(20, (gap / rowWidth) * 100);
+  const contentPct = (100 - spacerPct * (n - 1)) / n;
+  const out: Column[] = [];
+  content.forEach((col, idx) => {
+    if (idx > 0)
+      out.push({ type: 'column', widthPct: spacerPct, style: {}, contents: [{ type: 'spacer', height: 1 }] });
+    col.widthPct = contentPct;
+    out.push(col);
+  });
+  return out;
 }
 
 function sectionEmpty(section: Section): boolean {
@@ -427,7 +454,11 @@ async function sectionFor(child: SceneNode): Promise<Section> {
     type: 'section',
     style: boxStyle(child),
     columns: [
-      { type: 'column', style: inner === child ? {} : boxStyle(inner), contents: await collectContents(inner) },
+      {
+        type: 'column',
+        style: inner === child ? {} : boxStyle(inner),
+        contents: await collectContents(inner, containerAlign(inner, 'left')),
+      },
     ],
   };
 }
