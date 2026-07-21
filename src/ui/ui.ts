@@ -28,8 +28,8 @@ const clientSelect = $<HTMLSelectElement>('client');
 const clientView = $<HTMLDivElement>('client-view');
 const tabPreview = $<HTMLButtonElement>('tab-preview');
 const tabSource = $<HTMLButtonElement>('tab-source');
-const copyBtn = $<HTMLButtonElement>('copy');
-const downloadBtn = $<HTMLButtonElement>('download');
+const exportBtn = $<HTMLButtonElement>('export-btn');
+const exportList = $<HTMLDivElement>('export-list');
 const resizeHandle = $<HTMLDivElement>('resize');
 const subjectInput = $<HTMLInputElement>('subject');
 const fromInput = $<HTMLInputElement>('from');
@@ -601,17 +601,25 @@ tabSource.onclick = () => {
   workarea.classList.add('hidden');
 };
 
-copyBtn.onclick = async () => {
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function copyHtml(): Promise<void> {
   if (!currentHtml) return;
   await navigator.clipboard.writeText(currentHtml);
   post({ type: 'notify', message: 'HTML copied' });
-};
+}
 
-downloadBtn.onclick = async () => {
+async function downloadHtml(): Promise<void> {
   const doc = activeDoc();
   if (!doc) return;
   const useVars = opts().variables === true;
-
   const html = renderWith(doc, (image) => `${IMAGE_DIR}/${image.id}.png`);
 
   const zip = new JSZip();
@@ -621,19 +629,49 @@ downloadBtn.onclick = async () => {
   for (const image of collectImages(doc)) {
     if (image.bytes && !(useVars && image.binding)) imageFolder.file(`${image.id}.png`, image.bytes);
   }
-
   const vars = displayVariables().map((v) => ({ name: v.name, type: v.type, sample: v.sample, value: v.value ?? '' }));
   if (vars.length > 0) root.file('variables.json', JSON.stringify(vars, null, 2));
 
-  const blob = await zip.generateAsync({ type: 'blob' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${EXPORT_DIR}.zip`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(await zip.generateAsync({ type: 'blob' }), `${EXPORT_DIR}.zip`);
   post({ type: 'notify', message: 'Exported figmail-export.zip' });
+}
+
+/** Just the image assets inside the email (icons/photos/logos), not the whole frame. */
+async function downloadImages(): Promise<void> {
+  const images = (textDoc ? collectImages(textDoc) : []).filter((img) => img.bytes);
+  if (images.length === 0) return post({ type: 'notify', message: 'No image assets to export.' });
+  const zip = new JSZip();
+  const folder = zip.folder('figmail-images')!;
+  for (const image of images) folder.file(`${image.id}.png`, image.bytes as Uint8Array);
+  downloadBlob(await zip.generateAsync({ type: 'blob' }), 'figmail-images.zip');
+  post({ type: 'notify', message: `Exported ${images.length} image(s).` });
+}
+
+exportBtn.onclick = (e) => {
+  e.stopPropagation();
+  exportList.classList.toggle('hidden');
 };
+document.addEventListener('click', () => exportList.classList.add('hidden'));
+exportList.onclick = (e) => e.stopPropagation();
+exportList.querySelectorAll<HTMLButtonElement>('button[data-act]').forEach((btn) => {
+  btn.onclick = () => {
+    exportList.classList.add('hidden');
+    switch (btn.dataset.act) {
+      case 'copy':
+        void copyHtml();
+        break;
+      case 'html':
+        void downloadHtml();
+        break;
+      case 'images':
+        void downloadImages();
+        break;
+      case 'figma':
+        post({ type: 'exportToFigma', values: valuesMap() });
+        break;
+    }
+  };
+});
 
 resizeHandle.onpointerdown = (event) => {
   event.preventDefault();

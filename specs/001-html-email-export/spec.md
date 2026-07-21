@@ -29,6 +29,18 @@ Figma로 디자인한 이메일을 손으로 `<table>`/inline-CSS HTML로 옮기
 - 반응형 breakpoint, 다크모드 변형
 - Text 모드에서 gradient / stroke / shadow의 정밀 재현, 레이어 겹침(z-order) 재현
 
+## Export 액션 (상단 Export ▾ 메뉴)
+
+하단 버튼 대신 상단 우측 `Export ▾` 하나로 모은다:
+
+- **Copy HTML** — 현재 렌더 HTML을 클립보드로.
+- **Download HTML (.zip)** — `email.html` + `images/` (+ 변수 있으면 `variables.json`).
+- **Download images only (.zip)** — 이메일 안의 **이미지 에셋만** (`figmail-images/`).
+  프레임 전체를 한 장으로 뽑던 것과 구분된다.
+- **Create filled copy in Figma** — 캡처한 프레임을 원본 옆에 clone하고, 변수의
+  적용값을 텍스트 노드에 써넣어 **값이 채워진 결과를 Figma에서 바로 확인**한다.
+  (텍스트 값 치환 위주; 링크/이미지 URL 반영은 추후.)
+
 ## 파이프라인
 
 ```

@@ -37,6 +37,22 @@
   }
   select { font-size: 12px; padding: 5px 8px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; }
   .tabs { margin-left: auto; }
+  .export-menu { position: relative; }
+  .export-trigger {
+    border: none; background: #3d4cff; color: #fff; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  }
+  .export-list {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+    background: #fff; border: 1px solid #e0e2e8; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 6px; min-width: 220px;
+  }
+  .export-list.hidden { display: none; }
+  .export-list button {
+    display: block; width: 100%; text-align: left; border: none; background: transparent;
+    padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; color: #1a1a1a;
+  }
+  .export-list button:hover { background: #f0f1f4; }
 
   #templates-bar {
     display: flex; align-items: center; gap: 8px;
@@ -183,6 +199,15 @@
     <button id="tab-preview" class="active">Preview</button>
     <button id="tab-source">HTML</button>
   </div>
+  <div class="export-menu">
+    <button id="export-btn" class="export-trigger">Export ▾</button>
+    <div id="export-list" class="export-list hidden">
+      <button data-act="copy">Copy HTML</button>
+      <button data-act="html">Download HTML (.zip)</button>
+      <button data-act="images">Download images only (.zip)</button>
+      <button data-act="figma">Create filled copy in Figma</button>
+    </div>
+  </div>
 </header>
 
 <div id="templates-bar">
@@ -252,11 +277,6 @@
   <textarea id="source" class="hidden" readonly></textarea>
   <div id="onboarding"></div>
 </main>
-
-<footer>
-  <button id="copy" class="secondary">Copy HTML</button>
-  <button id="download" class="primary">Export (.zip)</button>
-</footer>
 
 <div id="resize" title="Drag to resize"></div>
 

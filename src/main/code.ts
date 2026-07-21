@@ -99,6 +99,46 @@ function reflectSelection() {
   });
 }
 
+/** Substitute applied variable values into a cloned text node. */
+async function applyValuesToText(node: TextNode, values: Record<string, string>) {
+  const segs = (readNodeData(node).segments ?? []).filter((s) => s.var).sort((a, b) => b.start - a.start); // right-to-left keeps earlier offsets valid
+  if (segs.length === 0) return;
+
+  const fontSegs = node.getStyledTextSegments(['fontName']);
+  await Promise.all(fontSegs.map((s) => figma.loadFontAsync(s.fontName)));
+
+  let chars = node.characters;
+  for (const s of segs) {
+    const value = values[s.var as string];
+    if (value !== undefined && value !== '') chars = chars.slice(0, s.start) + value + chars.slice(s.end);
+  }
+  node.characters = chars;
+}
+
+async function applyValues(node: SceneNode, values: Record<string, string>) {
+  if (node.type === 'TEXT') await applyValuesToText(node, values);
+  if ('children' in node) for (const child of node.children) await applyValues(child, values);
+}
+
+/** Clone the captured frame beside the original with the applied values filled in. */
+async function exportToFigma(values: Record<string, string>) {
+  if (!rootId) return;
+  const root = figma.getNodeById(rootId);
+  if (!root || root.type === 'PAGE' || root.type === 'DOCUMENT' || !('clone' in root)) {
+    post({ type: 'error', message: 'Capture a frame first.' });
+    return;
+  }
+  const original = root as SceneNode & { clone: () => SceneNode };
+  const clone = original.clone();
+  clone.name = `${original.name} (filled)`;
+  clone.x = original.x + original.width + 48;
+  clone.y = original.y;
+  await applyValues(clone, values);
+  figma.currentPage.selection = [clone];
+  figma.viewport.scrollAndZoomIntoView([clone]);
+  figma.notify('Created a filled copy next to the original.');
+}
+
 async function recaptureRoot() {
   if (!rootId) return;
   const root = figma.getNodeById(rootId);
@@ -164,6 +204,9 @@ figma.ui.onmessage = async (message: UiToMain) => {
       }
       break;
     }
+    case 'exportToFigma':
+      await exportToFigma(message.values);
+      break;
     case 'resize':
       figma.ui.resize(Math.max(320, message.width), Math.max(320, message.height));
       break;

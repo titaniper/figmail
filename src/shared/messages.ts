@@ -76,5 +76,6 @@ export type UiToMain =
   | { type: 'deleteTemplate'; id: string }
   | { type: 'bind'; nodeId: string; data: NodeData }
   | { type: 'saveTemplate'; data: TemplateData }
+  | { type: 'exportToFigma'; values: Record<string, string> }
   | { type: 'resize'; width: number; height: number }
   | { type: 'notify'; message: string };
