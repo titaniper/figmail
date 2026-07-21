@@ -1,7 +1,7 @@
 import type { MainToUi, SelectedNodeInfo, TemplateRef, UiToMain } from '../shared/messages';
 import { buildDocument, PLUGIN_DATA_KEY, PLUGIN_TEMPLATE_KEY, readNodeData, readTemplateData } from './traverse';
 
-figma.showUI(__html__, { width: 720, height: 900, title: 'Figmail' });
+figma.showUI(__html__, { width: 1080, height: 900, title: 'Figmail' });
 
 const REGISTRY_KEY = 'figmail:templates';
 
@@ -171,6 +171,12 @@ async function captureById(id: string) {
 figma.ui.onmessage = async (message: UiToMain) => {
   switch (message.type) {
     case 'ready': {
+      // Restore the last window size.
+      const size = (await figma.clientStorage.getAsync('figmail:size')) as
+        | { width: number; height: number }
+        | undefined;
+      if (size) figma.ui.resize(Math.max(480, size.width), Math.max(400, size.height));
+
       // If the selection is already a saved template, open it; otherwise onboard.
       const match = matchingTemplateId();
       if (match) await captureById(match);
@@ -222,9 +228,13 @@ figma.ui.onmessage = async (message: UiToMain) => {
     case 'exportToFigma':
       await exportToFigma(message.values);
       break;
-    case 'resize':
-      figma.ui.resize(Math.max(320, message.width), Math.max(320, message.height));
+    case 'resize': {
+      const width = Math.max(480, message.width);
+      const height = Math.max(400, message.height);
+      figma.ui.resize(width, height);
+      void figma.clientStorage.setAsync('figmail:size', { width, height });
       break;
+    }
     case 'notify':
       figma.notify(message.message);
       break;
