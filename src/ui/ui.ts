@@ -287,16 +287,24 @@ function sendBind(data: NodeData): void {
   post({ type: 'bind', nodeId: selectedNode.id, data });
 }
 
+function thumbHtml(node: SelectedNodeInfo): string {
+  if (!node.thumbnail) return '';
+  return `<div class="sel-thumb"><img src="${bytesToDataUrl(node.thumbnail)}" alt="" /></div>
+    <div class="sel-name">${esc(node.name)}</div>`;
+}
+
 function renderSelectionPanel(): void {
   const node = selectedNode;
-  if (!node || node.kind === 'other') {
+  if (!node) {
     selectionBody.className = 'muted';
-    selectionBody.textContent = 'Select a text, button, or image layer in Figma.';
+    selectionBody.textContent = 'Select a layer in Figma to preview / bind it.';
     return;
   }
   selectionBody.className = '';
   if (node.kind === 'text') renderTextBinding(node);
-  else renderWholeBinding(node);
+  else if (node.kind === 'other') {
+    selectionBody.innerHTML = `${thumbHtml(node)}<div class="muted">This layer isn't bindable (text, button, or image only), but here's what Figmail captures.</div>`;
+  } else renderWholeBinding(node);
 }
 
 /** Text node: highlight a substring in the panel and bind it as a variable or link. */
@@ -306,6 +314,7 @@ function renderTextBinding(node: SelectedNodeInfo): void {
 
   selectionBody.innerHTML = `
     ${variableNamesDatalist()}
+    ${thumbHtml(node)}
     <div class="kind-chip">TEXT</div>
     <div class="field"><label>Highlight part of the text below, then bind it</label>
       <div id="text-sel" class="textsel">${esc(text)}</div></div>
@@ -393,6 +402,7 @@ function renderWholeBinding(node: SelectedNodeInfo): void {
   if (node.kind === 'button') {
     selectionBody.innerHTML = `
       ${list}
+      ${thumbHtml(node)}
       <div class="kind-chip">BUTTON / LINK</div>
       <div class="field"><label>Link (href)</label><input id="b-href" placeholder="https://..." value="${esc(node.data.href ?? b?.sample ?? '')}"></div>
       <div class="field"><label>URL variable (optional)</label><input id="b-name" list="var-names" placeholder="e.g. portalUrl" value="${esc(b?.name ?? '')}"></div>
@@ -400,6 +410,7 @@ function renderWholeBinding(node: SelectedNodeInfo): void {
   } else {
     selectionBody.innerHTML = `
       ${list}
+      ${thumbHtml(node)}
       <div class="kind-chip">IMAGE</div>
       <div class="field"><label>Image URL variable</label><input id="b-name" list="var-names" placeholder="e.g. heroImageUrl" value="${esc(b?.name ?? '')}"></div>
       <div class="row-btns"><button class="bind" id="b-bind">Bind</button><button class="unbind" id="b-unbind">Unbind</button></div>`;

@@ -91,13 +91,21 @@ async function capture(node: SceneNode) {
   }
 }
 
-function reflectSelection() {
+async function reflectSelection() {
   const selection = figma.currentPage.selection;
   if (selection.length !== 1) {
     post({ type: 'selection', node: null });
     return;
   }
   const node = selection[0];
+  let thumbnail: Uint8Array | undefined;
+  try {
+    thumbnail = await (
+      node as SceneNode & { exportAsync: (s: ExportSettingsImage) => Promise<Uint8Array> }
+    ).exportAsync({ format: 'PNG', constraint: { type: 'WIDTH', value: 360 } });
+  } catch {
+    thumbnail = undefined;
+  }
   post({
     type: 'selection',
     node: {
@@ -105,6 +113,7 @@ function reflectSelection() {
       name: node.name,
       kind: nodeKind(node),
       text: node.type === 'TEXT' ? node.characters : undefined,
+      thumbnail,
       data: readNodeData(node),
     },
   });
@@ -184,7 +193,7 @@ figma.ui.onmessage = async (message: UiToMain) => {
         postTemplates();
         postIdle();
       }
-      reflectSelection();
+      await reflectSelection();
       break;
     }
     case 'capture': {
@@ -214,7 +223,7 @@ figma.ui.onmessage = async (message: UiToMain) => {
         const hasData = message.data.binding || message.data.href;
         node.setPluginData(PLUGIN_DATA_KEY, hasData ? JSON.stringify(message.data) : '');
         await recaptureRoot();
-        reflectSelection();
+        await reflectSelection();
       }
       break;
     }
@@ -248,5 +257,5 @@ figma.on('selectionchange', () => {
     if (match) void captureById(match);
     else postIdle();
   }
-  reflectSelection();
+  void reflectSelection();
 });

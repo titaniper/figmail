@@ -35,6 +35,8 @@ export interface SelectedNodeInfo {
   kind: 'text' | 'button' | 'image' | 'other';
   /** Current text characters, for text nodes (used as the binding sample). */
   text?: string;
+  /** A small PNG preview of the node, so the panel shows what Figmail captured. */
+  thumbnail?: Uint8Array;
   data: NodeData;
 }
 
