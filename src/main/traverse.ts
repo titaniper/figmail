@@ -64,7 +64,17 @@ function boxStyle(node: SceneNode): BoxStyle {
   if ('cornerRadius' in node && typeof node.cornerRadius === 'number') {
     style.borderRadius = node.cornerRadius;
   }
+  if ('strokes' in node && Array.isArray(node.strokes)) {
+    const stroke = node.strokes.find((s): s is SolidPaint => s.type === 'SOLID' && s.visible !== false);
+    const weight = 'strokeWeight' in node && typeof node.strokeWeight === 'number' ? node.strokeWeight : 0;
+    if (stroke && weight > 0) style.border = `${Math.round(weight)}px solid ${rgbToHex(stroke.color)}`;
+  }
   return style;
+}
+
+/** True when the node has a visible solid background fill (a filled CTA button, not a text link). */
+function hasSolidBg(node: SceneNode): boolean {
+  return solidFill('fills' in node ? node.fills : undefined) !== undefined;
 }
 
 function fontWeight(style: string): number {
@@ -99,17 +109,20 @@ function buildText(node: TextNode): Content[] {
   // Per-character style + Figma hyperlink from styled segments.
   const weight: number[] = new Array(n).fill(400);
   const italic: boolean[] = new Array(n).fill(false);
+  const underline: boolean[] = new Array(n).fill(false);
   const color: (string | undefined)[] = new Array(n).fill(undefined);
   const figLink: (string | undefined)[] = new Array(n).fill(undefined);
-  const styleSegs = node.getStyledTextSegments(['fontName', 'fills', 'hyperlink']);
+  const styleSegs = node.getStyledTextSegments(['fontName', 'fills', 'hyperlink', 'textDecoration']);
   for (const seg of styleSegs) {
     const w = fontWeight(seg.fontName.style);
     const it = /italic/i.test(seg.fontName.style);
     const c = solidFill(seg.fills);
     const link = seg.hyperlink && seg.hyperlink.type === 'URL' ? seg.hyperlink.value : undefined;
+    const ul = seg.textDecoration === 'UNDERLINE';
     for (let i = seg.start; i < seg.end; i += 1) {
       weight[i] = w;
       italic[i] = it;
+      underline[i] = ul;
       color[i] = c;
       figLink[i] = link;
     }
@@ -137,7 +150,7 @@ function buildText(node: TextNode): Content[] {
   for (let i = 0; i < n; i += 1) if (!linkAt[i] && figLink[i]) linkAt[i] = { href: figLink[i] };
 
   const key = (i: number) =>
-    `${weight[i]}|${italic[i]}|${color[i] ?? ''}|${varAt[i] ?? ''}|${JSON.stringify(linkAt[i] ?? null)}`;
+    `${weight[i]}|${italic[i]}|${underline[i]}|${color[i] ?? ''}|${varAt[i] ?? ''}|${JSON.stringify(linkAt[i] ?? null)}`;
 
   const runs: TextRun[] = [];
   let i = 0;
@@ -147,6 +160,7 @@ function buildText(node: TextNode): Content[] {
     const run: TextRun = { text: chars.slice(i, j) };
     if (weight[i] !== 400) run.fontWeight = weight[i];
     if (italic[i]) run.italic = true;
+    if (underline[i]) run.underline = true;
     if (color[i]) run.color = color[i];
     if (varAt[i]) run.var = varAt[i];
     if (linkAt[i]) run.link = linkAt[i];
@@ -253,7 +267,9 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
 
   const data = readNodeData(node);
   const hasLinkData = Boolean(data.href) || data.binding?.type === 'url';
-  if (looksLikeButton(node) || hasLinkData) {
+  // A filled CTA (has a background) is an mj-button; a bg-less "🔗 Button" is just a
+  // text link — let it fall through so its inner text renders (underlined/coloured).
+  if ((looksLikeButton(node) && hasSolidBg(node)) || hasLinkData) {
     const label = firstText(node) ?? node.name;
     return [
       {

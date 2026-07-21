@@ -21,6 +21,8 @@ export interface BoxStyle {
   paddingBottom?: number;
   paddingLeft?: number;
   borderRadius?: number;
+  /** CSS border shorthand, e.g. "1px solid #d1d5db". */
+  border?: string;
 }
 
 /** A hyperlink on a run: a static href and/or a URL variable. */
@@ -35,6 +37,7 @@ export interface TextRun {
   fontWeight?: number;
   color?: string;
   italic?: boolean;
+  underline?: boolean;
   /** This run is a text variable — rendered as `{{ var }}` / applied value. */
   var?: string;
   /** This run is a hyperlink. */

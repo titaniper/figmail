@@ -123,6 +123,7 @@ function renderRun(run: TextRun, base: TextStyle, opts: RenderOptions): string {
   const declarations: string[] = [];
   if (run.fontWeight && run.fontWeight !== 400) declarations.push(`font-weight:${run.fontWeight}`);
   if (run.italic) declarations.push('font-style:italic');
+  if (run.underline) declarations.push('text-decoration:underline');
   if (run.color && run.color !== base.color) declarations.push(`color:${run.color}`);
   let html = declarations.length ? `<span style="${declarations.join(';')}">${content}</span>` : content;
 
@@ -223,6 +224,8 @@ function renderColumn(column: Column, opts: RenderOptions): string {
     width: column.widthPct !== undefined ? `${column.widthPct}%` : undefined,
     'background-color': column.style.backgroundColor,
     padding: padding(column.style),
+    border: column.style.border,
+    'border-radius': px(column.style.borderRadius),
   });
   const body = column.contents.map((c) => renderContent(c, opts)).join('\n      ');
   return `<mj-column ${a}>\n      ${body}\n    </mj-column>`;
@@ -232,6 +235,8 @@ function renderSection(section: Section, opts: RenderOptions): string {
   const a = attrs({
     'background-color': section.style.backgroundColor,
     padding: padding(section.style) ?? '0',
+    border: section.style.border,
+    'border-radius': px(section.style.borderRadius),
     'css-class': 'fm-section',
   });
   const columns = section.columns.map((c) => renderColumn(c, opts)).join('\n    ');
