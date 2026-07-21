@@ -222,12 +222,11 @@ function sizePreview(): void {
 function renderCurrent(): void {
   const doc = activeDoc();
   if (!doc) return;
-  // Preview simulates dark by applying overrides inline; the HTML tab/export use a media query.
+  // Preview omits the dark media query (so the OS theme can't hijack it) and
+  // simulates dark inline via forceDark; the HTML tab/export keep the media query.
   const inline = (image: ImageContent) => (image.bytes ? bytesToDataUrl(image.bytes) : (image.src ?? ''));
-  const previewHtml = renderWith(doc, inline, { forceDark: darkPreview });
-  const exportHtml = darkPreview ? renderWith(doc, inline, { forceDark: false }) : previewHtml;
-  preview.srcdoc = previewHtml;
-  source.value = exportHtml;
+  preview.srcdoc = renderWith(doc, inline, { forceDark: darkPreview, emitDarkMedia: false });
+  source.value = renderWith(doc, inline, { emitDarkMedia: true });
   clearError();
 }
 
@@ -626,7 +625,7 @@ const inlineResolver = (image: ImageContent) => (image.bytes ? bytesToDataUrl(im
 
 async function copyHtml(): Promise<void> {
   if (!textDoc) return;
-  const html = renderWith(textDoc, inlineResolver, { variables: variablesMode, forceDark: darkPreview });
+  const html = renderWith(textDoc, inlineResolver, { variables: variablesMode });
   await navigator.clipboard.writeText(html);
   post({ type: 'notify', message: 'HTML copied' });
 }

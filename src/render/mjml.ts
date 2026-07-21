@@ -105,7 +105,9 @@ function renderHead(doc: EmailDocument, opts: RenderOptions): string {
     '<mj-raw><meta name="color-scheme" content="light dark" /><meta name="supported-color-schemes" content="light dark" /></mj-raw>';
   const dark = opts.forceDark
     ? `<mj-style>${DARK_RULES}</mj-style>`
-    : `<mj-style>@media (prefers-color-scheme: dark){${DARK_RULES}}</mj-style>`;
+    : opts.emitDarkMedia === false
+      ? ''
+      : `<mj-style>@media (prefers-color-scheme: dark){${DARK_RULES}}</mj-style>`;
 
   return `<mj-head>\n    ${attributes}\n    ${colorScheme}\n    ${dark}\n    ${fonts}\n  </mj-head>`;
 }
@@ -144,6 +146,9 @@ export interface RenderOptions {
   values?: Record<string, string>;
   /** Preview-only: apply the dark overrides unconditionally (export uses a media query). */
   forceDark?: boolean;
+  /** Emit the prefers-color-scheme dark media query. Off for preview (so the OS theme
+   *  can't hijack it), on for export. Default true. */
+  emitDarkMedia?: boolean;
 }
 
 function handlebars(name: string): string {
