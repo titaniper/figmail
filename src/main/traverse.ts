@@ -176,8 +176,20 @@ function isContainer(node: SceneNode): boolean {
   return node.type === 'FRAME' || node.type === 'GROUP' || node.type === 'COMPONENT' || node.type === 'INSTANCE';
 }
 
+function countTextNodes(node: SceneNode): number {
+  if (node.type === 'TEXT') return 1;
+  if ('children' in node) return node.children.reduce((sum, c) => sum + countTextNodes(c), 0);
+  return 0;
+}
+
+/**
+ * A real button/link: name hints at a button AND it isn't a big content row
+ * (rows are named "…Button Block…/Row/Column/…" and hold multiple text nodes).
+ */
 function looksLikeButton(node: SceneNode): boolean {
-  return /button|btn|cta/i.test(node.name);
+  if (/block|row|column|section|list|footer|header|tiles|split/i.test(node.name)) return false;
+  if (!/button|btn|cta|🔗/i.test(node.name)) return false;
+  return countTextNodes(node) <= 1;
 }
 
 const VECTOR_TYPES: SceneNode['type'][] = ['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'POLYGON'];
@@ -242,7 +254,7 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
   const data = readNodeData(node);
   const hasLinkData = Boolean(data.href) || data.binding?.type === 'url';
   if (looksLikeButton(node) || hasLinkData) {
-    const label = node.type !== 'FRAME' ? node.name : (firstText(node) ?? node.name);
+    const label = firstText(node) ?? node.name;
     return [
       {
         type: 'button',
