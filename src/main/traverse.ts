@@ -78,13 +78,14 @@ function hasSolidBg(node: SceneNode): boolean {
 }
 
 function fontWeight(style: string): number {
-  const s = style.toLowerCase();
+  // Normalize "Semi Bold" / "Extra_Bold" → "semibold"/"extrabold" before matching.
+  const s = style.toLowerCase().replace(/[\s_-]/g, '');
   if (s.includes('thin')) return 100;
   if (s.includes('extralight') || s.includes('ultralight')) return 200;
-  if (s.includes('light')) return 300;
-  if (s.includes('medium')) return 500;
   if (s.includes('semibold') || s.includes('demibold')) return 600;
   if (s.includes('extrabold') || s.includes('ultrabold')) return 800;
+  if (s.includes('light')) return 300;
+  if (s.includes('medium')) return 500;
   if (s.includes('black') || s.includes('heavy')) return 900;
   if (s.includes('bold')) return 700;
   return 400;
@@ -345,6 +346,23 @@ function isLeaf(node: SceneNode): boolean {
   return node.type === 'TEXT' || looksLikeButton(node) || hasImageFill(node) || isFlattenableGraphic(node);
 }
 
+/** A horizontal row nested somewhere below (email HTML can't represent it → rasterize). */
+function hasNestedRow(node: SceneNode): boolean {
+  if (isLeaf(node)) return false;
+  return visibleChildren(node).some((c) => isRow(c) || hasNestedRow(c));
+}
+
+/** A child image that covers ~the whole node — i.e. a background/banner image behind content. */
+function hasBackgroundImageChild(node: SceneNode): boolean {
+  return visibleChildren(node).some(
+    (c) =>
+      (hasImageFill(c) || isFlattenableGraphic(c)) &&
+      c.width >= node.width * 0.9 &&
+      c.height >= node.height * 0.9 &&
+      visibleChildren(node).length > 1,
+  );
+}
+
 function spacerSection(height: number): Section {
   return {
     type: 'section',
@@ -361,10 +379,19 @@ function unwrap(node: SceneNode): SceneNode {
 }
 
 async function columnsFrom(row: SceneNode): Promise<Column[]> {
+  const gap = layoutGap(row);
+  const children = visibleChildren(row);
   const columns: Column[] = [];
-  for (const child of visibleChildren(row)) {
-    const inner = unwrap(child);
-    columns.push({ type: 'column', style: boxStyle(inner), contents: await collectContents(inner) });
+  for (let idx = 0; idx < children.length; idx += 1) {
+    const inner = unwrap(children[idx]);
+    const style = { ...boxStyle(inner) };
+    // Approximate the row's horizontal gap as inner padding between columns.
+    if (gap > 0 && children.length > 1) {
+      const half = Math.round(gap / 2);
+      style.paddingLeft = (style.paddingLeft ?? 0) + (idx > 0 ? half : 0);
+      style.paddingRight = (style.paddingRight ?? 0) + (idx < children.length - 1 ? half : 0);
+    }
+    columns.push({ type: 'column', style, contents: await collectContents(inner) });
   }
   return columns;
 }
@@ -378,7 +405,17 @@ function sectionEmpty(section: Section): boolean {
  * background/padding. A horizontal row becomes a multi-column section; a row that
  * wraps a single card becomes section(row bg) > column(card bg/padding) > content.
  */
+function imageSection(image: Content): Section {
+  return { type: 'section', style: {}, columns: [{ type: 'column', style: {}, contents: [image] }] };
+}
+
 async function sectionFor(child: SceneNode): Promise<Section> {
+  // A row with a background image (e.g. a banner) or a nested horizontal layout
+  // (e.g. an icon+text checklist) can't be expressed in MJML — rasterize it whole.
+  if (hasImageFill(child) || hasNestedRow(child) || hasBackgroundImageChild(child)) {
+    const image = await toImage(child);
+    if (image) return imageSection(image);
+  }
   if (isRow(child)) {
     return { type: 'section', style: boxStyle(child), columns: await columnsFrom(child) };
   }
