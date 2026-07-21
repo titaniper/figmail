@@ -329,69 +329,66 @@ function isLeaf(node: SceneNode): boolean {
   return node.type === 'TEXT' || looksLikeButton(node) || hasImageFill(node) || isFlattenableGraphic(node);
 }
 
-/** A container that holds a horizontal row somewhere below, so it must be split into sections. */
-function containsRow(node: SceneNode): boolean {
-  if (isLeaf(node)) return false;
-  if (isRow(node)) return true;
-  return visibleChildren(node).some(containsRow);
-}
-
-function singleColumnSection(contents: Content[], style: BoxStyle = {}): Section {
-  return { type: 'section', style, columns: [{ type: 'column', style: {}, contents }] };
-}
-
 function spacerSection(height: number): Section {
-  return singleColumnSection([{ type: 'spacer', height }]);
+  return {
+    type: 'section',
+    style: {},
+    columns: [{ type: 'column', style: {}, contents: [{ type: 'spacer', height }] }],
+  };
 }
 
-async function rowSection(row: SceneNode): Promise<Section> {
+/** If a container just wraps a single styled container (row > card), return the inner card. */
+function unwrap(node: SceneNode): SceneNode {
+  const kids = visibleChildren(node);
+  if (kids.length === 1 && isContainer(kids[0]) && !isLeaf(kids[0])) return kids[0];
+  return node;
+}
+
+async function columnsFrom(row: SceneNode): Promise<Column[]> {
   const columns: Column[] = [];
   for (const child of visibleChildren(row)) {
-    columns.push({ type: 'column', style: boxStyle(child), contents: await collectContents(child) });
+    const inner = unwrap(child);
+    columns.push({ type: 'column', style: boxStyle(inner), contents: await collectContents(inner) });
   }
-  return { type: 'section', style: boxStyle(row), columns };
+  return columns;
+}
+
+function sectionEmpty(section: Section): boolean {
+  return section.columns.every((c) => c.contents.every((x) => x.type === 'spacer'));
 }
 
 /**
- * Linearizes a container subtree into a flat list of email sections. Email HTML
- * cannot nest arbitrarily (MJML: body > section > column > content), so the
- * vertical stack is flattened: leaf clusters become single-column sections,
- * horizontal rows become multi-column sections, and containers that hold a row
- * are recursed into. Auto-layout item spacing is preserved as spacer sections.
+ * Maps one top-level child (an email "row") to a section, preserving its
+ * background/padding. A horizontal row becomes a multi-column section; a row that
+ * wraps a single card becomes section(row bg) > column(card bg/padding) > content.
  */
+async function sectionFor(child: SceneNode): Promise<Section> {
+  if (isRow(child)) {
+    return { type: 'section', style: boxStyle(child), columns: await columnsFrom(child) };
+  }
+  const inner = unwrap(child);
+  if (inner !== child && isRow(inner)) {
+    return { type: 'section', style: boxStyle(child), columns: await columnsFrom(inner) };
+  }
+  return {
+    type: 'section',
+    style: boxStyle(child),
+    columns: [
+      { type: 'column', style: inner === child ? {} : boxStyle(inner), contents: await collectContents(inner) },
+    ],
+  };
+}
+
+/** Flattens the frame's rows into email sections (email HTML can't nest arbitrarily). */
 async function buildSections(container: SceneNode): Promise<Section[]> {
   const out: Section[] = [];
   const gap = layoutGap(container);
-  let buffer: Content[] = [];
-
-  const pushGap = () => {
-    if (gap > 0 && out.length > 0) out.push(spacerSection(gap));
-  };
-  const flush = () => {
-    if (buffer.length > 0) {
-      pushGap();
-      out.push(singleColumnSection(buffer));
-      buffer = [];
-    }
-  };
-
   for (const child of visibleChildren(container)) {
-    if (isRow(child)) {
-      flush();
-      pushGap();
-      out.push(await rowSection(child));
-    } else if (containsRow(child)) {
-      flush();
-      pushGap();
-      out.push(...(await buildSections(child)));
-    } else {
-      const contents = await collectContents(child);
-      if (contents.length === 0) continue;
-      if (buffer.length > 0 && gap > 0) buffer.push({ type: 'spacer', height: gap });
-      buffer.push(...contents);
-    }
+    const section = await sectionFor(child);
+    if (sectionEmpty(section)) continue;
+    if (out.length > 0 && gap > 0) out.push(spacerSection(gap));
+    out.push(section);
   }
-  flush();
   return out;
 }
 
