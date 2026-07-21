@@ -272,10 +272,14 @@ async function collectContents(node: SceneNode): Promise<Content[]> {
   }
 
   if (isContainer(node) && 'children' in node) {
+    // An empty frame (e.g. "📐 Spacer") contributes its height as vertical spacing.
+    const visible = node.children.filter((c) => c.visible !== false);
+    if (visible.length === 0) {
+      return node.height >= 1 ? [{ type: 'spacer', height: Math.round(node.height) }] : [];
+    }
     const gap = layoutGap(node);
     const nested: Content[] = [];
-    for (const child of node.children) {
-      if (child.visible === false) continue;
+    for (const child of visible) {
       const childContents = await collectContents(child);
       if (childContents.length === 0) continue;
       if (nested.length > 0 && gap > 0) nested.push({ type: 'spacer', height: gap });
