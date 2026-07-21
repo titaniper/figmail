@@ -55,7 +55,8 @@ const EXPORT_DIR = 'figmail-export';
 const IMAGE_DIR = 'images';
 
 type Mode = 'image' | 'text';
-let mode: Mode = 'image';
+// Default to the semantic Text view so the preview matches the HTML export (WYSIWYG).
+let mode: Mode = 'text';
 let variablesMode = false;
 let textDoc: EmailDocument | undefined;
 let imageDoc: EmailDocument | undefined;
@@ -632,15 +633,16 @@ async function copyHtml(): Promise<void> {
 
 async function downloadHtml(): Promise<void> {
   if (!textDoc) return;
-  // The exported .html is the reusable template — bound values become {{ name }}.
-  const html = renderWith(textDoc, (image) => `${IMAGE_DIR}/${image.id}.png`, { variables: true });
+  // Match the preview: Variables toggle → {{ name }} template, else filled/mockup.
+  const useVars = variablesMode;
+  const html = renderWith(textDoc, (image) => `${IMAGE_DIR}/${image.id}.png`, { variables: useVars });
 
   const zip = new JSZip();
   const root = zip.folder(EXPORT_DIR)!;
   root.file('email.html', html);
   const imageFolder = root.folder(IMAGE_DIR)!;
   for (const image of collectImages(textDoc)) {
-    if (image.bytes && !image.binding) imageFolder.file(`${image.id}.png`, image.bytes);
+    if (image.bytes && !(useVars && image.binding)) imageFolder.file(`${image.id}.png`, image.bytes);
   }
   const vars = displayVariables().map((v) => ({ name: v.name, type: v.type, sample: v.sample, value: v.value ?? '' }));
   if (vars.length > 0) root.file('variables.json', JSON.stringify(vars, null, 2));
